@@ -64,9 +64,9 @@ self-sizing row estimates even when all response values were unchanged.
 The settings fix compares snapshots/status before reloading, skips polls or
 completions during dragging/tracking/deceleration, and preserves the first
 visible row plus its pixel offset when a changed snapshot requires a reload.
-Repeated identical error messages also avoid reloading. The UIKit fixture waits
-through multiple real timer polls and then changes a response value, asserting
-that the switch remains visible and its position is preserved.
+Repeated identical error messages also avoid reloading. The former UIKit fixture checked multiple timer polls and a changed response
+value for row visibility and position. That simulator fixture has been removed;
+check settings scrolling and switch animations on device.
 
 Further binary analysis identifies a more direct display boundary:
 
@@ -153,7 +153,7 @@ both legacy classes absent (`bento-only`). It also checks real KVO subclasses,
 late resource availability, unchanged backing fields/callbacks/counters,
 secure archive round trips, exception-safe coder suppression, and native updates
 followed by on/off restoration. A separate invocation checks incompatible ABI
-rejection. The existing UIKit polling test and all package builds remain enabled.
+rejection. Package builds remain enabled; the UIKit polling test has been removed.
 
 These fixtures do not execute Google's proprietary SwiftUI view. On device,
 reopen the profile menu after toggling and check both title/layout and native

@@ -86,12 +86,12 @@ surface (`PHSTabBarController`, `floatingBottomTabBar`,
 and multiple `destination` selectors/methods. The production gate additionally
 checks exact Objective-C ABIs for the methods it calls before attaching anything.
 
-## Regression coverage
+## Historical simulator checks
 
-The UIKit smoke deliberately makes the fake Google segmented control only 44 pt
-high while Search remains 56 pt. It verifies that the visible controller lives in
+The removed UIKit smoke deliberately made the fake Google segmented control only 44 pt
+high while Search remains 56 pt. It verified that the visible controller lived in
 an independent full-screen scene window instead of inheriting that compact
-geometry. It also checks:
+geometry. It also checked:
 
 - Google `childViewControllers` does not change;
 - there are three regular `UITab`s plus one `UISearchTab`;
@@ -103,8 +103,7 @@ geometry. It also checks:
 - hiding the Google bar hides the overlay;
 - disabling restores the original controls and removes the overlay root.
 
-The simulator smoke is not a substitute for injected-device validation. Device
-validation should cover launch, all four controls, selected/unselected press and
+The simulator smoke and its CI job have been removed. Device validation should cover launch, all four controls, selected/unselected press and
 hold, light/dark appearance, rotation, background/foreground transitions and
 presented full-screen flows.
 

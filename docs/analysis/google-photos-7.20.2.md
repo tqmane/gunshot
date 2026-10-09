@@ -52,7 +52,7 @@ Only `isBackedUp`, `hasOriginalBytes == Yes (1)`, non-partial backup, and storag
 
 ## Validation
 
-The macOS CI runs both 7.92.0 and 7.20.2 contracts. Legacy fixtures omit the new SSO factory, new asset-completion selector, new detail-model class, storage title getter, and Swift upload service. They exercise native account switching, silent manual/automatic routing, reconciliation failure without native payload fallback, integer completion preservation, quality evidence checks, account-bound refresh, settings actions, and native unlimited on/off/archive behavior. CI also builds rootless, rootful, and jailed packages and runs the existing UIKit settings smoke test.
+The macOS CI runs both 7.92.0 and 7.20.2 contracts. Legacy fixtures omit the new SSO factory, new asset-completion selector, new detail-model class, storage title getter, and Swift upload service. They exercise native account switching, silent manual/automatic routing, reconciliation failure without native payload fallback, integer completion preservation, quality evidence checks, account-bound refresh, settings actions, and native unlimited on/off/archive behavior. CI also builds rootless, rootful, and jailed packages. The former UIKit settings smoke test has been removed.
 
 Real-device checks still needed on 7.20.2: installation with the current SSO adapters, native account refresh, settings/menu tap, unlimited display on/off after reopening the menu, original JPEG/HEIC/video/Live Photo upload, manual and automatic handoff, completion refresh without relaunch, cancellation/network loss, and upgrade/downgrade behavior. Jailed uploads require the app to remain active; this is not a background-execution entitlement change.
 

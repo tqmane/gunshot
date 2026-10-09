@@ -9,7 +9,7 @@ git clone --recurse-submodules https://github.com/tqmane/gunshot.git
 cd gunshot
 ```
 
-Core checks run on Linux or macOS with **Go 1.26.0**, Python 3 and a C compiler. Native fixtures require macOS/Xcode; UIKit smoke tests also require an installed iOS simulator runtime. Device packages additionally require Theos, `ldid` and `dpkg`. CI pins Theos in [setup-theos.sh](../scripts/setup-theos.sh).
+Core checks run on Linux or macOS with **Go 1.26.0**, Python 3 and a C compiler. Native fixtures require macOS/Xcode. Device packages additionally require Theos, `ldid` and `dpkg`. CI pins Theos in [setup-theos.sh](../scripts/setup-theos.sh).
 
 ## Checks
 
@@ -19,7 +19,6 @@ Run commands from the repository root. CI uses these same scripts.
 | --- | --- |
 | `bash scripts/test-core.sh` | Localization, upstream projection, Go race tests, projected backend tests, vet and the real C/Go bridge |
 | `bash scripts/test-native.sh` | All macOS native fixtures; optional `jailbreak` / `jailed` argument selects a suite |
-| `bash scripts/test-settings-ui.sh` | UIKit settings, translation and lifecycle smoke on an iOS simulator |
 | `python3 scripts/format.py --check` | First-party native, Go and Python formatting |
 | `python3 scripts/verify-package.py jailed` | Built package layout; also accepts `rootless` / `rootful` |
 

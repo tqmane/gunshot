@@ -15,4 +15,4 @@ To change translations:
 
 For an additional language, add its catalog, then add its code and display name to the language selector in `GSPanel.m`. Locale resolution automatically recognizes embedded catalogs.
 
-CI validates key coverage, format arguments and generated output. A Foundation fixture checks locale selection and fallback, and a UIKit fixture renders both Japanese and English settings. Protocol keys, quality values, account identifiers and credentials are never translated.
+CI validates key coverage, format arguments and generated output. A Foundation fixture checks locale selection and fallback. Check rendered labels and layout on device. Protocol keys, quality values, account identifiers and credentials are never translated.
