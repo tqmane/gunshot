@@ -63,7 +63,26 @@ func GunshotUpload(ctx context.Context, paths []string, opts UploadOptions, repo
 		return "", err
 	}
 	api.client.Transport = contextTransport{ctx, api.client.Transport}
-	key, skipped, err := uploadWorkItem(ctx, api, items[0], opts, 0, reporter)
+	return gunshotUploadWorkItem(ctx, api, items[0], opts, reporter)
+}
+
+func gunshotUploadWorkItem(ctx context.Context, api *Api, item UploadWorkItem, opts UploadOptions, reporter UploadReporter) (string, error) {
+	// A hash match proves that a component exists, not that the Live Photo is
+	// complete. Let upstream attach the MOV and require its commit result.
+	opts.UpdateExistingPhotosToLive = true
+	key, skipped, err := uploadWorkItem(ctx, api, item, opts, 0, reporter)
+	if skipped && err == nil && item.Kind == UploadWorkLivePhoto {
+		// With updates enabled, pinned upstream skips only a remote MOV without
+		// its still. Create the still first, then use the verified still-first
+		// reconciliation path; do not guess the private VideoOriginal request.
+		stillOpts := opts
+		stillOpts.ForceUpload = false
+		stillOpts.DeleteFromHost = false // Both files are needed until linked.
+		if _, err := uploadSingleFile(ctx, api, item.LivePhoto.PhotoPath, stillOpts, 0, reporter); err != nil {
+			return "", err
+		}
+		key, skipped, err = uploadWorkItem(ctx, api, item, opts, 0, reporter)
+	}
 	if skipped && err == nil {
 		return "", ErrGunshotRemoteComponentExists
 	}

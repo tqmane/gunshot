@@ -58,3 +58,4 @@ p.write_text(s)
 shutil.copy2(r / 'tests/quality_wire_test.go.txt', d / 'backend/gunshot_quality_wire_test.go')
 
 shutil.copy2(r / 'tests/context_transport_test.go.txt', d / 'backend/gunshot_context_transport_test.go')
+shutil.copy2(r / 'tests/live_photo_upload_test.go.txt', d / 'backend/gunshot_live_photo_upload_test.go')
