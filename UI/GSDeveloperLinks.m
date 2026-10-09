@@ -11,7 +11,8 @@ static void GSLoadDeveloperAvatar(UITableViewCell *cell, NSString *urlString) {
               if (!avatar)
                   return;
               dispatch_async(dispatch_get_main_queue(), ^{
-                  UIListContentConfiguration *content = [cell.contentConfiguration copy];
+                  UIListContentConfiguration *content =
+                      [(UIListContentConfiguration *)cell.contentConfiguration copy];
                   content.image = avatar;
                   cell.contentConfiguration = content;
               });
@@ -29,6 +30,8 @@ static void GSLoadDeveloperAvatar(UITableViewCell *cell, NSString *urlString) {
     UIListContentConfiguration *content = [UIListContentConfiguration subtitleCellConfiguration];
     content.text = row == 0 ? @"GitHub" : @"X";
     content.secondaryText = row == 0 ? @"@tqmane" : @"@t2aman1e";
+    content.textProperties.numberOfLines = 0;
+    content.secondaryTextProperties.numberOfLines = 0;
     content.image = [UIImage systemImageNamed:@"person.crop.circle.fill"];
     content.imageProperties.reservedLayoutSize = CGSizeMake(40, 40);
     content.imageProperties.maximumSize = CGSizeMake(40, 40);
