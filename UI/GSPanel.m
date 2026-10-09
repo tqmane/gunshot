@@ -1,6 +1,7 @@
 #import "../Shared/GSLocalization.h"
 #import "GSPanel.h"
 #import "GSPhotosGlass.h"
+#import "GSDeveloperLinks.h"
 #import "../Media/GSExporter.h"
 #import "../Media/GSBatchImport.h"
 #import "GSAlbumPicker.h"
@@ -55,6 +56,7 @@
 @property (nonatomic, copy) void (^activityCompletion)(void);
 @property (nonatomic, copy) NSString *statusText;
 @property (nonatomic, copy) NSString *statusLanguage;
+@property (nonatomic, copy) NSString *tableLanguage;
 @property (nonatomic, strong) NSIndexPath *sheetSourcePath;
 @end
 @implementation GSPanel
@@ -193,19 +195,37 @@
     NSIndexPath *anchor = table.indexPathsForVisibleRows.firstObject;
     CGFloat delta =
         anchor ? table.contentOffset.y - [table rectForRowAtIndexPath:anchor].origin.y : 0;
-    __block CGPoint offset = table.contentOffset;
-    [UIView performWithoutAnimation:^{
+    CGPoint offset = table.contentOffset;
+    if (![self.tableLanguage isEqual:GSLanguage()] ||
+        table.numberOfSections != [self numberOfSectionsInTableView:table]) {
         [table reloadData];
-        [table layoutIfNeeded];
-        if (anchor && anchor.section < [table numberOfSections] &&
-            anchor.row < [table numberOfRowsInSection:anchor.section])
-            offset.y = [table rectForRowAtIndexPath:anchor].origin.y + delta;
-        CGFloat minimum = -table.adjustedContentInset.top;
-        CGFloat maximum = MAX(minimum, table.contentSize.height - table.bounds.size.height +
-                                           table.adjustedContentInset.bottom);
-        [table setContentOffset:CGPointMake(offset.x, MIN(MAX(offset.y, minimum), maximum))
-                       animated:NO];
-    }];
+        self.tableLanguage = GSLanguage();
+    } else {
+        // Reconfigure existing cells so an in-flight UISwitch animation survives status polls.
+        NSInteger queue = self.queueSection;
+        if ([table numberOfRowsInSection:queue] != [self tableView:table
+                                                       numberOfRowsInSection:queue])
+            [UIView performWithoutAnimation:^{
+                [table reloadSections:[NSIndexSet indexSetWithIndex:queue]
+                     withRowAnimation:UITableViewRowAnimationNone];
+            }];
+        NSMutableArray *paths = [NSMutableArray array];
+        for (NSInteger section = 0; section < table.numberOfSections; section++)
+            for (NSInteger row = 0; row < [table numberOfRowsInSection:section]; row++)
+                [paths addObject:[NSIndexPath indexPathForRow:row inSection:section]];
+        [table reconfigureRowsAtIndexPaths:paths];
+        [table headerViewForSection:queue].textLabel.text = [self tableView:table
+                                                    titleForHeaderInSection:queue];
+    }
+    [table layoutIfNeeded];
+    if (anchor && anchor.section < [table numberOfSections] &&
+        anchor.row < [table numberOfRowsInSection:anchor.section])
+        offset.y = [table rectForRowAtIndexPath:anchor].origin.y + delta;
+    CGFloat minimum = -table.adjustedContentInset.top;
+    CGFloat maximum = MAX(minimum, table.contentSize.height - table.bounds.size.height +
+                                       table.adjustedContentInset.bottom);
+    [table setContentOffset:CGPointMake(offset.x, MIN(MAX(offset.y, minimum), maximum))
+                   animated:NO];
 }
 - (void)message:(NSString *)message {
     BOOL changed =
@@ -369,9 +389,11 @@
                ?: GSL(@"Not configured");
 }
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView {
-    return self.queueSection + 1;
+    return self.queueSection + 1 + (self.settingsMode ? 1 : 0);
 }
 - (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section {
+    if (self.settingsMode && section == self.queueSection + 1)
+        return 2;
     if (section == 0)
         return 1;
     if (section == self.queueSection)
@@ -379,6 +401,8 @@
     return [self.controlSections[section - 1][@"rows"] count];
 }
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section {
+    if (self.settingsMode && section == self.queueSection + 1)
+        return GSL(@"Developer");
     if (section == 0)
         return GSL(@"Connection status");
     if (section == self.queueSection)
@@ -387,7 +411,7 @@
     return self.controlSections[section - 1][@"title"];
 }
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
-    if (section == 0 || section == self.queueSection)
+    if (section == 0 || section >= self.queueSection)
         return nil;
     return self.controlSections[section - 1][@"footer"];
 }
@@ -405,7 +429,6 @@
 - (void)controlSwitchChanged:(UISwitch *)toggle {
     NSInteger control = toggle.tag;
     BOOL desired = toggle.on;
-    [toggle setOn:[self switchValueForControl:control] animated:YES];
     if (control == 19) {
         GSSetPhotosGlass(desired);
         [self reloadTablePreservingPosition];
@@ -416,9 +439,14 @@
         [self reloadTablePreservingPosition];
         return;
     }
-    if (self.busy)
+    if (self.busy) {
+        [toggle setOn:[self switchValueForControl:control] animated:YES];
         return;
+    }
     if (control == 10) {
+        // Enabling backup routing requires confirmation before changing the saved value.
+        if (desired)
+            [toggle setOn:[self switchValueForControl:control] animated:YES];
         [self toggleNativeRouting];
         return;
     }
@@ -428,14 +456,31 @@
         return;
     }
     NSMutableDictionary *options = [self.options mutableCopy];
-    if (!options)
+    if (!options) {
+        [toggle setOn:[self switchValueForControl:control] animated:YES];
         return;
+    }
     options[@[ @"wifiOnly", @"chargingOnly", @"paused" ][control - 3]] = @(desired);
     [self request:@{@"op" : @"configure", @"options" : options}];
 }
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)path {
-    UITableViewCell *cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
-                                                   reuseIdentifier:nil];
+    if (self.settingsMode && path.section == self.queueSection + 1)
+        return [self developerCellForRow:path.row];
+    NSInteger control = [self controlAtPath:path];
+    NSString *identifier = path.section == 0 ? @"status"
+                           : control >= 0
+                               ? [NSString stringWithFormat:@"control-%ld", (long)control]
+                               : @"job";
+    UITableViewCell *cell = [tableView dequeueReusableCellWithIdentifier:identifier];
+    if (!cell)
+        cell = [[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle
+                                      reuseIdentifier:identifier];
+    cell.textLabel.textColor = UIColor.labelColor;
+    cell.detailTextLabel.text = nil;
+    cell.selectionStyle = UITableViewCellSelectionStyleDefault;
+    cell.accessoryType = UITableViewCellAccessoryNone;
+    if (![cell.accessoryView isKindOfClass:UISwitch.class])
+        cell.accessoryView = nil;
     cell.textLabel.numberOfLines = 0;
     cell.detailTextLabel.numberOfLines = 0;
     cell.textLabel.font = [UIFont preferredFontForTextStyle:UIFontTextStyleBody];
@@ -458,7 +503,6 @@
         }
         return cell;
     }
-    NSInteger control = [self controlAtPath:path];
     if (control >= 0) {
         NSArray *titles = @[
             GSL(@"Quality"),
@@ -545,9 +589,17 @@
             cell.textLabel.textColor = UIColor.systemRedColor;
         if ((control >= 3 && control <= 5) || control == 10 || control == 11 || control == 16 ||
             control == 19) {
-            UISwitch *toggle = [UISwitch new];
+            UISwitch *toggle = (UISwitch *)cell.accessoryView;
+            if (!toggle) {
+                toggle = [UISwitch new];
+                toggle.on = [self switchValueForControl:control];
+                [toggle addTarget:self
+                              action:@selector(controlSwitchChanged:)
+                    forControlEvents:UIControlEventValueChanged];
+                cell.accessoryView = toggle;
+            } else if (toggle.on != [self switchValueForControl:control])
+                [toggle setOn:[self switchValueForControl:control] animated:toggle.window != nil];
             toggle.tag = control;
-            toggle.on = [self switchValueForControl:control];
             toggle.accessibilityLabel = titles[control];
             toggle.onTintColor = tableView.tintColor;
             toggle.enabled = control == 19 ? GSPhotosGlassAvailable()
@@ -556,10 +608,6 @@
                                  : !self.busy && (control == 10   ? GSNativeRoutingAvailable()
                                                   : control == 11 ? GSUploadDiagnosticsAvailable()
                                                                   : self.options != nil);
-            [toggle addTarget:self
-                          action:@selector(controlSwitchChanged:)
-                forControlEvents:UIControlEventValueChanged];
-            cell.accessoryView = toggle;
             cell.selectionStyle = UITableViewCellSelectionStyleNone;
         }
         if (control == 19) {
@@ -662,6 +710,9 @@
         return;
     self.stateGeneration++;
     self.busy = YES;
+    NSMutableDictionary *previousOptions = self.options;
+    if ([request[@"op"] isEqual:@"configure"])
+        self.options = [request[@"options"] mutableCopy];
     [self message:GSL(@"Applying settings…")];
     self.navigationItem.rightBarButtonItem.enabled = NO;
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
@@ -670,9 +721,11 @@
         dispatch_async(dispatch_get_main_queue(), ^{
             self.busy = NO;
             self.navigationItem.rightBarButtonItem.enabled = YES;
-            if (error)
+            if (error) {
+                self.options = previousOptions;
                 [self message:error.localizedDescription];
-            else
+                [self reloadTablePreservingPosition];
+            } else
                 [self refresh];
         });
     });
@@ -912,6 +965,10 @@
 }
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path {
     [tableView deselectRowAtIndexPath:path animated:YES];
+    if (self.settingsMode && path.section == self.queueSection + 1) {
+        [self openDeveloperProfileAtRow:path.row];
+        return;
+    }
     self.sheetSourcePath = path;
     NSInteger control = [self controlAtPath:path];
     if (control == 12) {

@@ -18,6 +18,10 @@ static BOOL SnapshotDuringAuthorization;
 static atomic_ulong FixtureAccountReads;
 static atomic_ulong FixtureNativeConnections;
 static atomic_int FixtureConcurrent = 2;
+static atomic_bool FixtureWifiOnly;
+static atomic_bool FixtureChargingOnly;
+static atomic_bool FixturePaused;
+static atomic_bool FixtureFailConfigure;
 @interface GSPanel (GSFixturePolling)
 - (void)refresh;
 - (void)reloadTablePreservingPosition;
@@ -86,14 +90,22 @@ char *GSFixtureRequest(char *json, char *role) {
             @"selected" : @"test@example.com",
             @"accounts" : @[ @{@"email" : @"test@example.com"} ]
         };
+    if ([op isEqual:@"configure"]) {
+        if (atomic_exchange(&FixtureFailConfigure, false))
+            return strdup("{\"ok\":false,\"error\":\"fixture rejected settings\"}");
+        NSDictionary *options = request[@"options"];
+        atomic_store(&FixtureWifiOnly, [options[@"wifiOnly"] boolValue]);
+        atomic_store(&FixtureChargingOnly, [options[@"chargingOnly"] boolValue]);
+        atomic_store(&FixturePaused, [options[@"paused"] boolValue]);
+    }
     if ([op isEqual:@"options"])
         data = @{
             @"quality" : @"original",
             @"concurrent" : @(atomic_load(&FixtureConcurrent)),
             @"retries" : @3,
-            @"wifiOnly" : @NO,
-            @"chargingOnly" : @NO,
-            @"paused" : @NO
+            @"wifiOnly" : @(atomic_load(&FixtureWifiOnly)),
+            @"chargingOnly" : @(atomic_load(&FixtureChargingOnly)),
+            @"paused" : @(atomic_load(&FixturePaused))
         };
     NSData *reply = [NSJSONSerialization dataWithJSONObject:@{
         @"ok" : @YES,
@@ -232,6 +244,113 @@ static void CheckRealSheetPresentation(GSPanel *panel, void (^next)(void)) {
         },
         [NSDate dateWithTimeIntervalSinceNow:5]);
 }
+static void CheckSwitchUpdates(GSPanel *panel, UIWindow *window, void (^next)(void)) {
+    UITableView *table = panel.tableView;
+    NSIndexPath *storagePath = [NSIndexPath indexPathForRow:1 inSection:6];
+    [table scrollToRowAtIndexPath:storagePath
+                 atScrollPosition:UITableViewScrollPositionMiddle
+                         animated:NO];
+    [table layoutIfNeeded];
+    UITableViewCell *storage = [table cellForRowAtIndexPath:storagePath];
+    UISwitch *local = (UISwitch *)storage.accessoryView;
+    if (!local.window || !local.on) {
+        Finish(NO, @"visible storage switch missing before animation regression");
+        return;
+    }
+    [local setOn:NO animated:YES];
+    [local sendActionsForControlEvents:UIControlEventValueChanged];
+    if ([table cellForRowAtIndexPath:storagePath] != storage || storage.accessoryView != local ||
+        local.on || UnlimitedStorage) {
+        Finish(NO, @"local switch was reset or replaced during its animation");
+        return;
+    }
+    // Queue growth must not replace unrelated controls either.
+    NSArray *jobs = [panel valueForKey:@"jobs"];
+    [panel setValue:@[ @{}, @{} ] forKey:@"jobs"];
+    [panel reloadTablePreservingPosition];
+    if ([table cellForRowAtIndexPath:storagePath] != storage || storage.accessoryView != local ||
+        local.on) {
+        Finish(NO, @"queue growth replaced an animating switch");
+        return;
+    }
+    [panel setValue:jobs forKey:@"jobs"];
+    [panel reloadTablePreservingPosition];
+    [local setOn:YES animated:YES];
+    [local sendActionsForControlEvents:UIControlEventValueChanged];
+
+    NSInteger developerSection = table.numberOfSections - 1;
+    NSIndexPath *githubPath = [NSIndexPath indexPathForRow:0 inSection:developerSection];
+    NSIndexPath *xPath = [NSIndexPath indexPathForRow:1 inSection:developerSection];
+    [table scrollToRowAtIndexPath:xPath
+                 atScrollPosition:UITableViewScrollPositionBottom
+                         animated:NO];
+    [table layoutIfNeeded];
+    UITableViewCell *github = [table cellForRowAtIndexPath:githubPath];
+    UITableViewCell *x = [table cellForRowAtIndexPath:xPath];
+    UITableViewCell *history = [table
+        cellForRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:developerSection - 1]];
+    UIListContentConfiguration *githubContent = (id)github.contentConfiguration;
+    if (table.tableFooterView || !github || !x || !history ||
+        ![githubContent.text isEqual:@"GitHub"] ||
+        ![githubContent.secondaryText isEqual:@"@tqmane"] ||
+        fabs(github.frame.origin.x - history.frame.origin.x) > 1 ||
+        fabs(github.frame.size.width - history.frame.size.width) > 1 ||
+        fabs(CGRectGetMaxY(github.frame) - CGRectGetMinY(x.frame)) > 1) {
+        Finish(NO, @"developer links must share the native inset-grouped layout");
+        return;
+    }
+    Capture(window, @"settings-developer.png");
+
+    NSIndexPath *wifiPath = [NSIndexPath indexPathForRow:3 inSection:2];
+    [table scrollToRowAtIndexPath:wifiPath
+                 atScrollPosition:UITableViewScrollPositionMiddle
+                         animated:NO];
+    [table layoutIfNeeded];
+    UITableViewCell *wifiCell = [table cellForRowAtIndexPath:wifiPath];
+    UISwitch *wifi = (UISwitch *)wifiCell.accessoryView;
+    [wifi setOn:YES animated:YES];
+    [wifi sendActionsForControlEvents:UIControlEventValueChanged];
+    if (!wifi.window || !wifi.on || wifiCell != [table cellForRowAtIndexPath:wifiPath] ||
+        wifiCell.accessoryView != wifi) {
+        Finish(NO, @"remote switch was reset or replaced before saving");
+        return;
+    }
+    Await(
+        ^BOOL {
+            return ![[panel valueForKey:@"busy"] boolValue] &&
+                   ![[panel valueForKey:@"refreshing"] boolValue] && wifi.enabled;
+        },
+        ^{
+            if (!atomic_load(&FixtureWifiOnly) || !wifi.on ||
+                wifiCell != [table cellForRowAtIndexPath:wifiPath] ||
+                wifiCell.accessoryView != wifi) {
+                Finish(NO, @"successful save replaced the switch or lost its selected value");
+                return;
+            }
+            atomic_store(&FixtureFailConfigure, true);
+            [wifi setOn:NO animated:YES];
+            [wifi sendActionsForControlEvents:UIControlEventValueChanged];
+            if (wifi.on) {
+                Finish(NO, @"switch reverted before the save result arrived");
+                return;
+            }
+            Await(
+                ^BOOL {
+                    return ![[panel valueForKey:@"busy"] boolValue] && wifi.enabled;
+                },
+                ^{
+                    if (!wifi.on || !atomic_load(&FixtureWifiOnly) ||
+                        wifiCell != [table cellForRowAtIndexPath:wifiPath] ||
+                        wifiCell.accessoryView != wifi) {
+                        Finish(NO, @"failed save did not restore the existing switch");
+                        return;
+                    }
+                    next();
+                },
+                [NSDate dateWithTimeIntervalSinceNow:10]);
+        },
+        [NSDate dateWithTimeIntervalSinceNow:10]);
+}
 static void CheckStationaryPolling(GSPanel *panel, UIWindow *window, void (^next)(void)) {
     NSIndexPath *path = [NSIndexPath indexPathForRow:1 inSection:6];
     // Offscreen rows keep estimated heights until a reload re-measures them, so the first
@@ -287,7 +406,7 @@ static void CheckStationaryPolling(GSPanel *panel, UIWindow *window, void (^next
                         return;
                     }
                     Capture(window, @"settings-after-polling.png");
-                    next();
+                    CheckSwitchUpdates(panel, window, next);
                 },
                 [NSDate dateWithTimeIntervalSinceNow:5]);
         },
