@@ -489,8 +489,9 @@ static void CheckStationaryPolling(GSPanel *panel, UIWindow *window, void (^next
                         return;
                     }
                     GSPanel *panel = Panel(root);
-                    if ([panel.tableView numberOfSections] != 8 ||
-                        [panel.tableView numberOfRowsInSection:6] != 3) {
+                    if ([panel.tableView numberOfSections] != 9 ||
+                        [panel.tableView numberOfRowsInSection:6] != 3 ||
+                        [panel.tableView numberOfRowsInSection:8] != 2) {
                         Finish(NO, @"settings sections or appearance rows incorrect");
                         return;
                     }
