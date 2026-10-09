@@ -62,7 +62,9 @@ func GunshotInitialize(path *C.char) C.int {
 		return -1
 	}
 	engine = e
-	if !hostBearerProvider { e.EnableNativeRelay() }
+	if !hostBearerProvider {
+		e.EnableNativeRelay()
+	}
 	go e.Run(context.Background())
 	return 0
 }
