@@ -1,62 +1,61 @@
-# Implementation notes
+# Architecture
 
-## Upstream pin and call graph
+[Documentation index](README.md) · [Build and test](development.md)
 
-Pinned commit: `0637c745dc590d74766b24eac80d689d2248e766` in [xob0t/gotohp](https://github.com/xob0t/gotohp/tree/0637c745dc590d74766b24eac80d689d2248e766).
+## Source map
 
-Ordinary file: `GunshotUpload → ClassifyUploadWork → uploadWorkItem → uploadSingleFile → CalculateSHA1 → FindRemoteMediaByHash → GetUploadToken → UploadFileWithProgress → ParseScottyFinalizeToken → CommitUpload → commitSerialized → doCommitRequest`.
+| Location | Responsibility |
+| --- | --- |
+| `Tweak.xm` / `Jailed/Hooks.m` | Jailbreak / in-process entry points and host lifecycle setup |
+| `UI/` | Settings, album picker, share activity, account-menu presentation and optional glass appearance |
+| `Native/` | Google Photos SSO, backup routing, completion monitoring, display integration and passive diagnostics |
+| `Media/` | Serial PhotoKit original export and bounded batch import |
+| `Shared/` | IPC contract/transport, sandbox discovery, localization and ABI-checked runtime helpers |
+| `Daemon/` | Jailbreak process authorization, Mach service and network/power conditions |
+| `Jailed/EmbeddedService.m` | In-process bridge, private storage and foreground/network conditions |
+| `internal/service/` | Go queue and request handling, shared by both runtime modes |
+| `GotohpCore/overlay/` | iOS additions and regression tests applied to the pinned upstream |
 
-Live Photo: `ClassifyUploadWork` uses Apple image content identifier / QuickTime identifier and still-image-time metadata. One work item carries photo + video. `uploadLivePhotoWithCallback` uploads components, builds the linked create request, and commits one asset. Pairing failures are explicit; two arbitrary same-stem files are not silently treated as a Live Photo.
+`internal/service/types.go` defines wire/persisted models; `engine.go` owns lifecycle and restart recovery; `state.go` owns durable writes/validation; `import.go` owns staging; `queue.go` schedules uploads. `protocol.go` authorizes operations, `upstream.go` adapts accounts/upload execution, and `summary.go` exposes redacted progress. These files remain one package and share the same engine lock.
 
-Authentication: `AddGoogleAccountWithProxy → exchangeEmbeddedSetupToken → validateGooglePhotosCredential → upsertCredential`. Raw credential import validates required fields and Google authentication before upsert. Imported credentials are URL query strings containing Android ID, account email, token, client signature, scope, language, and optional token-binding material. Account summaries exclude those secrets.
+[sources.mk](../sources.mk) is the shared host source list. Jailbreak links the Mach client and daemon; jailed links the embedded adapter and omits the daemon bearer relay. Neither uses a separate Preferences bundle.
 
-The projection excludes Wails files and desktop config migration tests; replaces configmanager with an iOS JSON store; reuses upstream Preferences definitions/setters only for upstream test compatibility. Two upstream persistence assertions are translated from YAML to JSON. Android ADB/executable discovery and modernc SQLite are absent. Native queue persistence does not need SQLite.
+## Upload flow
 
-Small explicit adaptations, checked against the pinned source:
+PhotoKit exports original bytes, including both Live Photo components, into a temporary host directory. Import reserves a daemon/service-created random job ID and explicit filename/size pairs. Offset-checked 32 KiB chunks populate private staging files; sealing checks sizes and fsyncs before publishing pending work. Hashes accumulate during import, avoiding a second large-file read under the queue lock.
 
-1. Initialize a nil TLSClientConfig before upstream dereferences it; never disable certificate validation, including proxy paths.
-2. Set a six-hour per-request ceiling for requests lacking upstream context.
-3. Fail closed on an ordinary remote duplicate-check error.
-4. Facade supplies the job cancellation context to all API transport requests and accepts exactly one classified work item. For two inputs that item must be a Live Photo.
+The queue snapshots account and quality. Each upload gets an independent upstream API client and cancellation context. Ordinary files use upstream classification, hash lookup, upload-token acquisition, byte transfer and commit. Live Photos use Apple content identifiers / QuickTime identifiers and still-image-time metadata; arbitrary same-stem files are not silently paired. The facade accepts exactly one work item; two input files must form a Live Photo.
 
-The submodule is immutable during builds. Script string anchors intentionally fail when upstream moves relevant code. Go build tests detect API drift. A projection build does not automatically prove the new upstream still implements the intended API policy.
+A remote hash match for one component does not prove a complete Live Photo. The facade lets upstream update an existing still with its video; a video-only match first creates the still and then follows that reconciliation path. Completion requires a commit result. A persistent unlinked match fails explicitly. Regression coverage lives in `GotohpCore/overlay/backend/gunshot_live_photo_upload_test.go`.
+
+Native backup routing keeps Google's scheduler/delegates, sends originals through the same queue, then resumes native server/fingerprint lookup. It blocks native payload fallback during reconciliation and does not fabricate successful callbacks or write native backup flags. Direct GoToHP uploads also trigger account-bound `fetchData` through the foreground completion monitor. See [supported routes](native-routing.md).
+
+## Durability and recovery
+
+State is fsynced and atomically replaced before scheduling. Write failure stops scheduling until restart; corrupt state fails initialization rather than resetting history. Phase changes are durable; per-byte progress stays in memory to reduce flash writes.
+
+On restart, an incomplete import is cancelled, an active preparation/upload returns to pending, and an uncertain commit becomes failed for manual review. Transfer retries start at byte zero. Hash checks reduce duplicates but cannot provide an exactly-once transaction with Google. Failed jobs retain staging until cancellation; cancellation never deletes remote media. Existing job IDs, JSON keys, state values and quality policies are shared across both runtimes.
 
 ## Transport and storage boundary
 
-Jailbreak clients use direct Mach lookup and, when needed, a restricted libSandy profile plus authenticated XPC discovery. `Shared/GSXPC.h` supplies C ABI declarations (not an implementation) for SDKs without XPC headers, with explicit object ownership. The macOS discovery fixtures exercise these declarations against libxpc.
+Jailbreak clients try direct Mach lookup, restricted libSandy access and authenticated XPC discovery. Only Apple Photos and Google Photos with expected signing identifiers and executable locations are accepted. The daemon derives identity from a kernel audit token bound to SecTask; JSON cannot supply its own role. Missing Security SPI fails closed. `Shared/GSXPC.h` supplies SDK-missing C ABI declarations, not another XPC implementation.
 
-Only Photos and Google Photos with the expected signing identifiers and executable locations are accepted, using the kernel Mach audit trailer. The signing identifier is derived from an audit-token-bound SecTask; the supplementary path check uses the token PID. PID recycling cannot substitute the signing identity. IPC fails closed if Security SPI is unavailable.
+Messages have a fixed maximum size and validated lengths; port/OOL descriptors and filesystem path operations are not accepted. Only Google Photos may mutate accounts/options or submit native authorization. Approved Photos clients can import media. The internal settings role belongs to the jailed adapter; the daemon never grants it. Conditions are daemon-only.
 
-Messages are simple Mach messages (no port/OOL descriptors), with a fixed maximum buffer and validated length. JSON has no filesystem path operation and cannot provide its own role. Only the audit-verified Google Photos process can mutate accounts and options over IPC for the in-app settings page. The internal settings role remains for the jailed adapter; the daemon never grants that role to a client. Approved Photos clients can begin/append/seal media jobs. Daemon-only conditions updates never arrive via a client-supplied role.
+Jailbreak data belongs to the mobile daemon. Theos package prefixes affect executables, LaunchDaemons and the libSandy profile, not user-data paths. Rootless and rootful must not be installed together. Jailed storage stays in the host's `Application Support/GoToHP`; it opens no external IPC. See [jailed storage constraints](jailed.md#実行保存の制約).
 
-Each import reserves daemon-created random ID and explicit filename/size pairs; offset-checked 32 KiB chunks populate private files. Content hashes are accumulated while chunks arrive, so sealing a large video does not reread the file under the queue lock. Seal verifies sizes and fsyncs files before publishing a pending job. Queue state is fsynced and atomically replaced before scheduling. A write failure stops scheduling until restart; corrupt state fails initialization rather than silently resetting history. Received tokens are not persisted in queue state.
+## Authentication
 
-The queue snapshots account and quality. Upload execution uses independent API clients for concurrency. Phase transitions are durable; per-byte progress is in-memory to avoid flash churn. On restart an incomplete import is cancelled, active upload returns to pending, and an uncertain commit becomes a failed job requiring manual review/retry. Network retries restart at byte zero. Remote hash checks reduce duplicate risk but cannot implement an exactly-once transaction with Google.
+Both entry points start account connection on launch and recheck on foreground activation; no settings page is required. The native SSO authorizer supplies `photos.native` authorization. Jailed uses the provider directly; jailbreak relays it through audit-authorized `account_native` / `native_bearer` requests. A new binding is validated at the Photos endpoint before persisting email/native ID. Bearers remain in memory and are absent from queue state, account summaries and diagnostics.
 
-Staging is private to the mobile daemon. No `/var/jb` hardcoding in user data. The package-stage script expands Theos's package prefix only for executables, LaunchDaemons and the libSandy profile. Rootless and rootful must not be installed simultaneously.
+Host renewal is serialized with reconnect, runs every 60 seconds while scheduled and rechecks on foreground activation. The daemon retains each bearer for at most five minutes; that is a local cap, not Google's expiry guarantee. Missing authorization pauses new work without consuming retries. Closing/suspending Google Photos prevents indefinite renewal; reopening replenishes it. A different identity's bearer is never used for an existing queue binding.
 
-## Native account authorization
+Legacy credential import still validates required fields and Google authentication before persistence. Its URL query string can contain Android ID, email, token, signature, scope, language and binding material. Previously imported credentials remain until removed; summaries never expose those secrets.
 
-On application launch, both builds wait for the signed-in identity and automatically obtain a `photos.native` bearer from the existing SSO authorizer. No GoToHP screen is needed. Foreground activation rechecks authentication, with in-flight coalescing and bounded retries. Jailed calls that provider directly; jailbreak forwards the bearer through the existing audit-authorized Mach service using `account_native` for connection and `native_bearer` for renewal. Only Google Photos may submit or clear a native bearer. The daemon validates a new binding at the Photos endpoint before persisting email/native ID. Access tokens live only in memory and are never part of account summaries, state or diagnostics.
+## Upstream and compatibility
 
-The host serializes reconnect and renewal, refreshes every 60 seconds while scheduled, and refreshes on foreground activation. The daemon enforces a five-minute local retention cap; this is not Google's expiry guarantee. New work waits without spending retries when a native binding lacks a bearer, including after daemon restart. An interrupted commit still requires review. Closing or suspending the app prevents indefinite SSO refresh; reopening it replenishes authorization. Queue account bindings are preserved, and a bearer for another identity is never used.
+The pin is recorded in [UPSTREAM_REVISION](../GotohpCore/UPSTREAM_REVISION). [Projection preparation](development.md#upstream-projection) replaces desktop configuration with an iOS JSON store and excludes Wails, ADB/executable discovery and desktop config-migration tests. Upstream Preferences/setters remain for backend test compatibility; two YAML persistence assertions are translated to JSON.
 
-Settings live inside Google Photos. The jailbreak package no longer builds/registers the Preferences bundle, depends on PreferenceLoader, or authorizes the Settings process to reach the daemon.
+Explicit adaptations initialize a nil TLS configuration, keep certificate validation enabled (including proxies), set a six-hour request ceiling, fail closed on ordinary duplicate-check errors, and propagate upload cancellation. The submodule is never rewritten by a build.
 
-## IPA inspection
-
-Provided input: `com.google.photos-7.92.0-eeveedecrypter.ipa`.
-
-Read-only inspection of the main app Info.plist:
-
-| Field | Value |
-| --- | --- |
-| CFBundleIdentifier | com.google.photos |
-| CFBundleExecutable | GooglePhotos |
-| CFBundleShortVersionString | 7.92.0 |
-| MinimumOSVersion | 18.0 |
-| NSPhotoLibraryUsageDescription | Present |
-
-The initial integration used UIKit and public PhotoKit/PHPicker. Subsequent work added version/ABI-checked private manual-backup hooks and passive uploader diagnostics. The [application analysis index](analysis/index.md) links the complete extracted instance-method metadata, selected static call-path findings and unverified areas. No IPA executable or raw disassembly is distributed. Actual appearance and runtime compatibility still require device checks.
-
-Jailed builds replace the Mach client/daemon with an in-process adapter; see [jailed.md](jailed.md). Shared API-detected native manual/automatic backup routing and the host completion monitor are documented in [native-routing.md](native-routing.md).
+Private features select legacy/modern APIs independently using exact class/selector/ABI checks. Version metadata is informational. [Compatibility evidence](analysis/compatibility.md) and [historical analysis](analysis/index.md) are distinct from [device validation](device-validation.md); metadata and CI cannot prove real authentication, quota, Live Photo playback or host UI behavior.

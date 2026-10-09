@@ -1,5 +1,7 @@
 # Google Photos の手動・自動バックアップ連携（jailed / jailbreak）
 
+> 解析・診断の記録です。現在の手順は[ドキュメント索引](../README.md)を参照してください。日付・版ごとの観測や過去の実装を含みます。
+
 ## 実機診断と変更理由
 
 追加診断では GMUAssetUploadRequest.start → GMUUploadRequest.startFetcher →

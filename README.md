@@ -2,9 +2,9 @@
 
 [English](README.md) · [日本語](README.ja.md)
 
-A Google Photos uploader for jailbreak, sideloading and LiveContainer, using the Go core from [xob0t/gotohp](https://github.com/xob0t/gotohp). Jailbreak builds upload through a separate daemon; jailed builds run inside Google Photos.
+A Google Photos uploader for jailbreak, sideloading and LiveContainer, using the Go core from [xob0t/gotohp](https://github.com/xob0t/gotohp). Jailbreak packages use a separate daemon; jailed packages run inside Google Photos.
 
-**Development build.** Automatically selects compatible legacy or modern native APIs **per feature**, without a version-number allowlist. The IPA-audited reference versions are **7.20.2 (iOS 16.1+)** and **7.92.0 (iOS 18.0+)**. Other releases can work when their APIs match; this is not a claim of device verification. See the [compatibility audit](docs/analysis/google-photos-7.20.2.md).
+**Development build.** Private APIs are selected per feature by class, selector and exact signature, without a version allowlist. The established static reference versions are 7.20.2 and 7.92.0; a scoped comparison with the supplied 7.96.0 IPA is recorded in [compatibility evidence](docs/analysis/compatibility.md). Static inspection is not device verification.
 
 ## Screenshots
 
@@ -18,95 +18,47 @@ A Google Photos uploader for jailbreak, sideloading and LiveContainer, using the
   <img src="docs/images/appearance-settings.png" width="240" alt="Language and Show unlimited storage settings">
 </p>
 
-## Disclaimer
+## Install
 
-An unofficial project unaffiliated with Google or Apple, provided **as is, without warranty**. Private APIs and app updates may break functionality or lead to account restrictions, data loss or storage charges. Keep a separate backup of your originals. Google Photos binaries, signing certificates and credentials are not distributed here.
+| Environment | Package | Execution |
+| --- | --- | --- |
+| Jailbreak, rootless | `gotohp-tweak-rootless.deb` | Imports in the host, uploads through the daemon |
+| Jailbreak, rootful | `gotohp-tweak-rootful.deb` | Imports in the host, uploads through the daemon |
+| Sideload / LiveContainer | `gotohp-tweak-jailed.deb` / `GunshotJailed.dylib` | Runs inside Google Photos; keep it in the foreground |
 
-## Install and use
+Get packages from [Releases](https://github.com/tqmane/gunshot/releases) or [Actions](https://github.com/tqmane/gunshot/actions). The [jailed installation guide](docs/jailed.md) covers Sideloadly, manual injection and LiveContainer. Do not inject jailbreak packages or inject both the jailed deb and dylib.
 
-> [!IMPORTANT]
-> **Install and enable the tweak before Google sign-in.** For sideloading, inject **GunshotJailed** into the IPA first. It corrects the re-signed app identifier within compatible Google Photos SSO APIs and handles missing shared-Keychain access automatically. No separate Sideload Spoofer is required for these corrections. Device sign-in verification is still pending.
->
-> 1. Install/enable the jailbreak tweak, or install Google Photos from an IPA with **GunshotJailed** injected. In LiveContainer, import the dylib and enable it for the Google Photos guest before launching.
-> 2. Open **Google Photos** with the tweak enabled and sign in to your Google account. When updating an existing installation, preserve the **signing account, bundle identifier and app data**, or the **same guest/data container** in LiveContainer.
-> 3. GoToHP automatically connects the signed-in account once native sign-in is ready. Use **Profile menu → GoToHP settings** to change upload settings or retry with **Reconnect**.
->
-> Do not delete the logged-in app/guest or create a new data container. Session retention is not guaranteed, including when moving from the App Store version to a separately signed app. See the [installation guide](docs/jailed.md).
+**Install and enable Gunshot before Google sign-in.** Jailed includes compatible SSO identifier/Keychain adaptations; a separate Sideload Spoofer is not needed for those corrections. Preserve the signing account, bundle ID and app data when updating, or the same LiveContainer guest/data container. Sign-in/session retention is not guaranteed.
 
-### Sideloading / LiveContainer
+Jailbreak requires a substrate-compatible injection system and **libSandy 1.1.6+** from [opa334's repository](https://opa334.github.io/). Install through a package manager to resolve dependencies. If Google Photos crashes, use Choicy to enable only Gunshot for it. Rootless and rootful must not be installed together. There is no iOS Settings entry or PreferenceLoader dependency.
 
-Get `gotohp-tweak-jailed` from [GitHub Actions](https://github.com/tqmane/gunshot/actions): it contains the `.deb`, `GunshotJailed.dylib` and notices. Use the [installation guide](docs/jailed.md) to inject the package or import the dylib into LiveContainer.
+## Use
 
-GoToHP automatically connects the signed-in account when Google Photos opens; opening GoToHP settings is not required. Choose **Uploads → Choose photos and videos** to upload. **Keep Google Photos in the foreground**; jailed uploads cannot continue after the app closes.
+1. Launch Google Photos and sign in. GoToHP connects the viewed account automatically; no token paste or settings visit is needed.
+2. Open **Profile menu → GoToHP settings** to choose quality, check the queue or reconnect.
+3. Use **Uploads → Choose photos and videos** (up to 100 per selection), or **Choose album** for bulk imports. See [preparation, stopping and troubleshooting](docs/bulk-import.md).
+4. Optionally enable **Route manual and automatic backups through GoToHP**, confirm the destination, and use supported native backup actions. It defaults off; automatic backup also requires Google Photos backup to be on. See [routing coverage and diagnostics](docs/native-routing.md).
 
-On jailed Google Photos with compatible native APIs, **Route manual and automatic backups through GoToHP** is off by default. Enable it and confirm the destination to route supported backup actions without opening GoToHP. Automatic backup also requires backup to be on in Google Photos. See [supported routes](docs/analysis/backup-routing.md) and [remaining coverage gaps](docs/native-routing.md).
+Jailbreak also provides an Apple Photos button and a supported **Upload with GoToHP** share action. Keep the host open until originals enter the queue. The daemon can then continue while authorization is valid; its bearer retention is capped at five minutes, and renewed authorization requires Google Photos. Jailed uploads pause when the host stops running and resume when foreground/auth/network conditions permit.
 
-### Jailbreak
-
-Install the `gotohp-tweak-rootless` or `gotohp-tweak-rootful` `.deb` from GitHub Actions with your package manager. libSandy 1.1.6 or later ([opa334’s repository](https://opa334.github.io/)) and a substrate-compatible injection system are required. Install with a package manager so it resolves these dependencies. The package includes a restricted libSandy profile for the GoToHP daemon; libSandy itself is installed as a shared system dependency. **If Google Photos crashes, use Choicy to enable only Gunshot for Google Photos.**
-
-Opening **Google Photos** automatically connects the account already signed into the app. No token paste or visit to GoToHP settings is required. Use **Profile menu → GoToHP settings** to change options or retry with **Reconnect**. Jailbreak packages do not add an iOS Settings entry or require PreferenceLoader. Upload from this page, the Apple Photos GoToHP button or a supported **Upload with GoToHP** share action.
-
-**Route manual and automatic backups through GoToHP** is also available on jailbreak builds, including the audited 7.20.2 APIs. Enable it once in GoToHP settings and confirm the destination; native backup buttons then enqueue silently, and automatic backup works when Google Photos backup is on. After a committed upload, the app requests its own server sync without opening settings or restarting. [Routing and completion details](docs/analysis/backup-routing.md).
-
-Keep Google Photos open until media reaches the queue. The daemon can continue using its in-memory authorization after the app closes. Native authorization is refreshed by Google Photos while it runs; the daemon retains each bearer for at most five minutes. When authorization is unavailable or the daemon restarts, pending jobs wait for Google Photos to reopen and refresh it without consuming retries. This does not provide indefinite authentication refresh while the host is closed. [Authentication details](docs/analysis/native-account.md).
-
-## Quality and queue
-
-For bulk imports, open **GoToHP settings → Uploads → Choose album**. Browse folders to an album, then add all accessible photos and videos. This avoids loading thousands of selections through the system photo picker. **Choose photos and videos** accepts up to 100 items per selection. If that picker shows **Unable to Load Items**, cancel it and use **Choose album**.
-
-Originals are prepared one at a time. Keep the app open during preparation; **Stop preparing** stops after the current item and keeps jobs already queued. An unreadable photo is counted as failed while the remaining selection continues. Check photo permissions and iCloud availability before retrying it. See [bulk import and HEIC troubleshooting](docs/bulk-import.md).
-
-| Setting | Device profile / requested behavior |
+| Quality | Requested device profile / behavior |
 | --- | --- |
 | Original | Pixel XL (Pixel 1), original quality without storage usage |
 | Storage saver | Pixel 2, storage saver |
 | Account storage | Pixel 8, original quality using normal quota |
 
-These are requests, not guarantees. Verify original-data availability and Google storage usage separately; a successful upload does not establish quota treatment. Account and quality are fixed when each item is queued; changing settings does not alter existing jobs.
+These are requests, not guarantees of quota treatment. Account and quality are fixed per queued job. PhotoKit exports original resources, including both Live Photo components, without re-encoding. Queue retry/cancel/recovery is supported; transfers restart from byte zero. An uncertain commit needs manual cloud-side review before retrying. Cancellation never deletes remote photos.
 
-PhotoKit uploads use original resources without re-encoding, including both Live Photo components. The queue supports progress, retry, cancellation and restart recovery. Retries restart the file transfer. An interrupted commit with an unknown outcome needs manual review/retry and may produce duplicates. Cancellation does not delete media already saved in Google Photos.
+English and Japanese are available under **Appearance → Language**. The optional native **Unlimited storage** card is a display setting; it does not prove account quota behavior.
 
-## Languages
+## Development
 
-English and Japanese are included. Choose **GoToHP settings → Appearance → Language**; unsupported device languages fall back to English. No separate translation bundle is needed. [Add translations](docs/localization.md).
+Start with the [development guide](docs/development.md) for build/test commands and upstream updates, and the [source map](docs/architecture.md) to locate a feature. The [documentation index](docs/README.md) separates current guides from historical analysis. Installation/routing guides and the index are in Japanese; this README provides the English quick start.
 
-## Build
+## Disclaimer
 
-Requires macOS, Xcode command line tools, Go 1.26.0, Theos, `ldid` and `dpkg`.
-
-```sh
-git clone --recurse-submodules https://github.com/tqmane/gunshot.git
-cd gunshot
-export THEOS="$HOME/theos"
-bash scripts/package.sh jailed  # or rootless / rootful
-```
-
-Run the local checks:
-
-```sh
-python3 scripts/localization.py --check
-python3 scripts/prepare-core.py
-go test -race -tags cli ./...
-go test -tags cli app/backend
-go vet -tags cli ./...
-```
-
-CI runs tests and builds all three packages. Successful `v*` tags publish release assets. To update the pinned upstream, run `bash scripts/sync-upstream.sh [commit]`; keep its license and generated notices with distributions.
-
-If a release already exists, CI uploads the built assets to it, replacing assets with the same names while preserving its title and notes. To recover publication for an existing tag (for example `v0.2.1`), select **Actions → Build and test → Run workflow**, choose `main`, and enter that tag in **release_tag**. The updated workflow builds and tests the tag's source, then uploads its packages; it does not move the tag. Leaving **release_tag** empty runs a build only. Re-running an old failed job uses its old workflow, so use **Run workflow** for this recovery.
+Unofficial and unaffiliated with Google or Apple, provided **as is, without warranty**. Private APIs and app updates may break functionality or lead to account restrictions, data loss or storage charges. Keep a separate backup of your originals. Google Photos binaries, certificates and credentials are not distributed here.
 
 ## License
 
-Gunshot is licensed under [GNU GPL v3.0 or later](LICENSE).
-Copyright (C) 2026 tqmane.
-
-The bundled [gotohp upstream](GotohpCore/upstream/LICENSE) remains MIT-licensed,
-Copyright (c) 2024 xob0t. Other third-party components retain their own licenses.
-Distribution packages include these notices in `ThirdPartyNotices.txt`.
-
-## Development docs
-
-- [Architecture, credentials and upstream integration](docs/architecture.md)
-- [Google Photos analysis](docs/analysis/index.md) (Japanese)
-- [Device validation](docs/device-validation.md)
+Gunshot: [GNU GPL v3.0 or later](LICENSE), Copyright (C) 2026 tqmane. The bundled [gotohp upstream](GotohpCore/upstream/LICENSE) remains MIT-licensed, Copyright (c) 2024 xob0t. Other components retain their licenses; distributions include `ThirdPartyNotices.txt`.

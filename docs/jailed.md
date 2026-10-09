@@ -5,7 +5,7 @@
 > [!IMPORTANT]
 > **最初から GunshotJailed を注入・有効化し、その状態でログインしてください。** 更新時はアプリや LiveContainer の guest を削除せず、同じ署名アカウント・Bundle ID・データコンテナを維持します。
 
-[免責事項](../README.ja.md#免責事項--disclaimer)も確認してください。
+[免責事項](../README.ja.md#免責事項)も確認してください。
 
 ## 配布物とビルド
 
@@ -61,13 +61,13 @@ IPA 内に事前注入する方式を使う場合も、ログイン済みの gue
 
 ## アカウントとアップロード
 
-7.92.0 では GoToHP の設定を開くと、ログイン中のアカウントを既存 SSO 経由で自動接続します。接続を更新するには**再接続**をタップします。トークンの手動入力は不要です。認証失敗時はエラーを表示し、別アカウントには送信しません。
+Google Photos の起動時に、ログイン中のアカウントを既存 SSO 経由で自動接続します。GoToHP の設定を開く必要はありません。接続を更新するには**再接続**をタップします。トークンの手動入力は不要です。認証失敗時はエラーを表示し、別アカウントには送信しません。
 
-**アップロード → 写真・動画を選択**から写真を選びます。ホストに `NSPhotoLibraryUsageDescription` が必要です（7.92.0 は確認済み）。認証の詳細は[認証経路・保存内容](analysis/native-account.md)、Google Photos のバックアップ連携は [backup-routing.md](analysis/backup-routing.md) を参照してください。
+**アップロード → 写真・動画を選択**から写真を選びます。ホストに `NSPhotoLibraryUsageDescription` が必要です（7.92.0 は確認済み）。認証の詳細は[認証経路・保存内容](analysis/native-account.md)、Google Photos のバックアップ連携は [バックアップ連携](native-routing.md) を参照してください。
 
 ## 実行・保存の制約
 
-uploader は Google Photos プロセス内で動作します。バックグラウンド通知で upload を中断し pending に戻し、前面復帰時や再起動後に GoToHP を開くと再開します。画面ロック・OS suspend・force kill 後の継続には対応しません。中断処理が間に合わなくても次回初期化で queue を復旧します。再送は先頭から行い、commit 中断は結果不明として停止します。認証・ディスク処理中は中断通知の処理が遅れる場合があります。
+uploader は Google Photos プロセス内で動作します。バックグラウンド通知で upload を中断し pending に戻し、Google Photos の前面復帰時・再起動後に認証と実行条件が整うと再開します。画面ロック・OS suspend・force kill 後の継続には対応しません。中断処理が間に合わなくても次回初期化で queue を復旧します。再送は先頭から行い、commit 中断は結果不明として停止します。認証・ディスク処理中は中断通知の処理が遅れる場合があります。
 
 アカウントの binding と queue は host / guest の `Application Support/GoToHP` に保存します。native token は Google Photos の SSO が管理し、GoToHP では保存しません。以前に手動 import した credential は削除するまで JSON に残る場合があります。
 

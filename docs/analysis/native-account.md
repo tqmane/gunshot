@@ -1,5 +1,7 @@
 # Google Photos のログイン中アカウントとメニュー
 
+> 解析・診断の記録です。現在の手順は[ドキュメント索引](../README.md)を参照してください。日付・版ごとの観測や過去の実装を含みます。
+
 対象: Google Photos 7.20.2 / 7.92.0を解析基準とするAPI自動検出。jailed / Sideloadly / LiveContainer、およびrootless / rootful。
 
 ## 実機で報告された事象

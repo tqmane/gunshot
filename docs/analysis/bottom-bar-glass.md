@@ -1,5 +1,7 @@
 # Google Photos bottom bar glass
 
+> 解析・診断の記録です。現在の手順は[ドキュメント索引](../README.md)を参照してください。日付・版ごとの観測や過去の実装を含みます。
+
 Enable `GoToHP > Appearance > Google Photos · Liquid Glass` on iOS 26+.
 The option defaults to off. Google Photos 7.92.0 is the audited host; later
 versions must pass the same runtime contracts and live hierarchy checks.

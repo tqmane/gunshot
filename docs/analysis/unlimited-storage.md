@@ -1,5 +1,7 @@
 # Native unlimited storage display (Google Photos iOS 7.92.0)
 
+> 解析・診断の記録です。現在の手順は[ドキュメント索引](../README.md)を参照してください。日付・版ごとの観測や過去の実装を含みます。
+
 GoToHP settings → Appearance → **Show unlimited storage** is enabled by default.
 The choice is stored in the host app's preferences (`GSShowUnlimitedStorage`). An
 absent key means on; an explicit false is preserved across launches. Reopen the

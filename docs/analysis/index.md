@@ -1,10 +1,11 @@
 # Google Photos アプリ解析の索引
 
-提供 IPA の静的解析、現在の実装、検証項目への入口です。クラスや selector の存在確認、mock test、実機・サーバーでの確認は区別してください。
+提供 IPA の静的解析と、過去の診断・修正理由を探すための索引です。現在の手順・仕様は[ドキュメント索引](../README.md)から参照してください。クラスや selector の存在確認、mock test、実機・サーバーでの確認は区別してください。
 
 | 対象 | 参照先 |
 | --- | --- |
-| 7.20.2 / 7.92.0 の API・ABI 差分、必要 OS | [互換性監査](google-photos-7.20.2.md) / [7.20.2 contracts](objc/7.20.2-contracts.json) |
+| 提供された3版の限定的な metadata 比較 | [7.20.2 / 7.92.0 / 7.96.0](compatibility.md) |
+| 7.20.2 / 7.92.0 の詳細な API・ABI 差分、必要 OS | [互換性監査](google-photos-7.20.2.md) / [7.20.2 contracts](objc/7.20.2-contracts.json) |
 | 全クラス・instance selector・encoding・static IMP | [機械可読索引と検索方法](objc/README.md) / [入力 hash・件数](objc/manifest.json) |
 | 手動・自動バックアップの使い方、対応経路、診断 | [バックアップ転送](../native-routing.md) |
 | 共通要求の移譲・再照合・画質 | [処理の解析と回帰修正](backup-routing.md) |
