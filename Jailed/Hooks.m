@@ -2,10 +2,10 @@
 #import <objc/runtime.h>
 #import "../UI/GSPanel.h"
 #import "../UI/GSAccountMenu.h"
-#import "../UI/GSNativeRouting.h"
-#import "../UI/GSPhotosIntegration.h"
-#import "../UI/GSAccountConnection.h"
-#import "../UI/GSUploadMonitor.h"
+#import "../Native/GSNativeRouting.h"
+#import "../Native/GSPhotosIntegration.h"
+#import "../Native/GSAccountConnection.h"
+#import "../Native/GSUploadMonitor.h"
 #import "SideloadKeychain.h"
 #import "SideloadIdentity.h"
 

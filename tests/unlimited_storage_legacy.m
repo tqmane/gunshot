@@ -1,4 +1,4 @@
-#import "../UI/GSUnlimitedStorage.h"
+#import "../Native/GSUnlimitedStorage.h"
 #import <objc/runtime.h>
 #include <assert.h>
 static BOOL ready, throwEncode;

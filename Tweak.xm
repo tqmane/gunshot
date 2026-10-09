@@ -1,10 +1,10 @@
 #import "UI/GSAccountMenu.h"
 #import <UIKit/UIKit.h>
 #import "UI/GSPanel.h"
-#import "UI/GSNativeAccount.h"
-#import "UI/GSNativeRelay.h"
-#import "UI/GSAccountConnection.h"
-#import "UI/GSUploadMonitor.h"
+#import "Native/GSNativeAccount.h"
+#import "Native/GSNativeRelay.h"
+#import "Native/GSAccountConnection.h"
+#import "Native/GSUploadMonitor.h"
 %hook UIWindow
 - (void)becomeKeyWindow {
  %orig;

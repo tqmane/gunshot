@@ -1,4 +1,4 @@
-#import "../Shared/GSPhotosCompatibility.h"
+#import "../Shared/GSPhotosRuntime.h"
 #include <assert.h>
 static id version;
 static NSString *executable = @"GooglePhotos";
@@ -13,6 +13,9 @@ static id Bundle(id object, SEL selector) {
     return [FixtureBundle new];
 }
 static void Done(id object, SEL selector, BOOL success, id result, id error) {}
+static id ObjectValue(id object, SEL selector) {
+    return @"fixture";
+}
 static Class Fixture(const char *name, const char *selector, const char *abi) {
     Class cls = objc_allocateClassPair(NSObject.class, name, 0);
     if (selector)
@@ -47,6 +50,13 @@ int main(void) {
             assert(GSPhotosHostAudited() ==
                    ([value isEqual:@"7.20.2"] || [value isEqual:@"7.92.0"]));
         }
+        // Shared private getter rejects nil, absent selectors, and incompatible return ABIs.
+        class_addMethod(modern, sel_registerName("value"), (IMP)ObjectValue, "@16@0:8");
+        class_addMethod(wrong, sel_registerName("value"), (IMP)ObjectValue, "q16@0:8");
+        assert([GSPhotosGetObject([modern new], @"value") isEqual:@"fixture"]);
+        assert(GSPhotosGetObject(nil, @"value") == nil);
+        assert(GSPhotosGetObject([absent new], @"value") == nil);
+        assert(GSPhotosGetObject([wrong new], @"value") == nil);
         // Mixed generations are selected per class; modern wins only with a valid ABI.
         class_addMethod(legacy,
                         sel_registerName("didCompleteWithSuccess:resultantMediaItem:error:"),

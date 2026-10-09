@@ -10,7 +10,7 @@
 #define GS_FAILURE error
 #endif
 #import "host_profile.h"
-#import "../UI/GSUploadDiagnostics.h"
+#import "../Native/GSUploadDiagnostics.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
 #include <assert.h>

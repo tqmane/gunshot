@@ -1,11 +1,11 @@
 #import "../Shared/GSLocalization.h"
 #import <UIKit/UIKit.h>
 #import "../UI/GSPanel.h"
-#import "../UI/GSAccountConnection.h"
-#import "../UI/GSUploadMonitor.h"
-#import "../UI/GSNativeRouting.h"
-#import "../UI/GSUploadDiagnostics.h"
-#import "../UI/GSExporter.h"
+#import "../Native/GSAccountConnection.h"
+#import "../Native/GSUploadMonitor.h"
+#import "../Native/GSNativeRouting.h"
+#import "../Native/GSUploadDiagnostics.h"
+#import "../Media/GSExporter.h"
 #import "../Shared/IPCProtocol.h"
 #include <stdlib.h>
 #include <stdatomic.h>

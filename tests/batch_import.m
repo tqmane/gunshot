@@ -1,5 +1,5 @@
-#import "../UI/GSBatchImport.h"
-#import "../UI/GSExporter.h"
+#import "../Media/GSBatchImport.h"
+#import "../Media/GSExporter.h"
 #include <assert.h>
 
 static NSString *Identity = @"identity-A", *Account = @"a@example.com";

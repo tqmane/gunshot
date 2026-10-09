@@ -2,8 +2,8 @@
 #import <objc/runtime.h>
 #import "host_profile.h"
 #import "native_account_fixture.h"
-#import "../UI/GSUploadMonitor.h"
-#import "../UI/GSPhotosIntegration.h"
+#import "../Native/GSUploadMonitor.h"
+#import "../Native/GSPhotosIntegration.h"
 #include <assert.h>
 #include <stdatomic.h>
 

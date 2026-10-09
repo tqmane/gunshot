@@ -1,4 +1,4 @@
-#import "../Shared/GSPhotosCompatibility.h"
+#import "../Shared/GSPhotosRuntime.h"
 #import "GSNativeAccount.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
@@ -16,15 +16,6 @@ static id GSViewingAccount(id object, SEL selector) {
     GSSource.manager = object;
     return GSViewingAccountOriginal(object, selector);
 }
-static BOOL GSMethod(id object, NSString *name, const char *encoding) {
-    Method method = class_getInstanceMethod(object_getClass(object), NSSelectorFromString(name));
-    return method && strcmp(method_getTypeEncoding(method), encoding) == 0;
-}
-static id GSGet(id object, NSString *name) {
-    if (!GSMethod(object, name, "@16@0:8"))
-        return nil;
-    return ((id(*)(id, SEL))objc_msgSend)(object, NSSelectorFromString(name));
-}
 static id GSIdentity(id account) {
     if (![account isKindOfClass:NSClassFromString(@"PHSAccount")])
         return nil;
@@ -32,7 +23,7 @@ static id GSIdentity(id account) {
     if (!ivar || strcmp(ivar_getTypeEncoding(ivar), "@\"<SSOIdentity>\""))
         return nil;
     id identity = object_getIvar(account, ivar);
-    if (!GSMethod(identity, @"hasValidAuth", "B16@0:8") ||
+    if (!GSPhotosObjectHasMethod(identity, @"hasValidAuth", "B16@0:8") ||
         !((BOOL(*)(id, SEL))objc_msgSend)(identity, NSSelectorFromString(@"hasValidAuth")))
         return nil;
     return identity;
@@ -40,9 +31,10 @@ static id GSIdentity(id account) {
 NSDictionary *GSNativeAccountSummary(void) {
     if (!NSThread.isMainThread)
         return nil;
-    id account = GSGet(GSSource.manager, @"viewingAccount");
+    id account = GSPhotosGetObject(GSSource.manager, @"viewingAccount");
     id identity = GSIdentity(account);
-    NSString *email = GSGet(identity, @"userEmail"), *identifier = GSGet(identity, @"userID");
+    NSString *email = GSPhotosGetObject(identity, @"userEmail"),
+             *identifier = GSPhotosGetObject(identity, @"userID");
     if (![email isKindOfClass:NSString.class] || !email.length ||
         ![identifier isKindOfClass:NSString.class] || !identifier.length)
         return nil;
@@ -51,7 +43,8 @@ NSDictionary *GSNativeAccountSummary(void) {
 BOOL GSNativeAccountMatches(id accountID) {
     if (!NSThread.isMainThread || !accountID)
         return NO;
-    return [GSGet(GSGet(GSSource.manager, @"viewingAccount"), @"accountID") isEqual:accountID];
+    return [GSPhotosGetObject(GSPhotosGetObject(GSSource.manager, @"viewingAccount"), @"accountID")
+        isEqual:accountID];
 }
 BOOL GSNativeIdentityMatches(NSString *identifier) {
     if (!NSThread.isMainThread || ![identifier isKindOfClass:NSString.class] || !identifier.length)
@@ -98,25 +91,25 @@ char *GSNativeBearer(const char *identifier) {
                     return;
                 }
                 id manager = GSSource.manager;
-                id account = GSGet(manager, @"viewingAccount");
-                id accountID = GSGet(account, @"accountID");
-                id service = GSGet(manager, @"photosSSOService");
+                id account = GSPhotosGetObject(manager, @"viewingAccount");
+                id accountID = GSPhotosGetObject(account, @"accountID");
+                id service = GSPhotosGetObject(manager, @"photosSSOService");
                 NSString *factory = @"fetcherAuthorizerForAccountID:scopes:";
                 id subject = accountID;
-                if (!GSMethod(service, factory, "@32@0:8@16@24")) {
-                    service = GSGet(manager, @"ssoService");
+                if (!GSPhotosObjectHasMethod(service, factory, "@32@0:8@16@24")) {
+                    service = GSPhotosGetObject(manager, @"ssoService");
                     factory = @"authorizationForIdentity:scopes:";
                     subject = GSIdentity(account);
                 }
-                if (!subject || !GSMethod(service, factory, "@32@0:8@16@24")) {
+                if (!subject || !GSPhotosObjectHasMethod(service, factory, "@32@0:8@16@24")) {
                     finish(nil);
                     return;
                 }
                 id authorizer = ((id(*)(id, SEL, id, id))objc_msgSend)(
                     service, NSSelectorFromString(factory), subject,
                     @[ @"https://www.googleapis.com/auth/photos.native" ]);
-                if (!GSMethod(authorizer,
-                              @"authorizeRequest:completionHandler:", "v32@0:8@16@?24")) {
+                if (!GSPhotosObjectHasMethod(
+                        authorizer, @"authorizeRequest:completionHandler:", "v32@0:8@16@?24")) {
                     finish(nil);
                     return;
                 }

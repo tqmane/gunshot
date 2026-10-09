@@ -2,8 +2,8 @@
 #import "../Shared/GSLocalization.h"
 #import "GSAccountMenu.h"
 #import "GSPanel.h"
-#import "GSNativeAccount.h"
-#import "GSUnlimitedStorage.h"
+#import "../Native/GSNativeAccount.h"
+#import "../Native/GSUnlimitedStorage.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
 

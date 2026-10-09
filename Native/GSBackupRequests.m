@@ -1,9 +1,9 @@
-#import "../Shared/GSPhotosCompatibility.h"
+#import "../Shared/GSPhotosRuntime.h"
 #import "../Shared/GSLocalization.h"
 #import "GSBackupRequests.h"
 #import "GSNativeRouting.h"
 #import "GSNativeAccount.h"
-#import "GSExporter.h"
+#import "../Media/GSExporter.h"
 #import "GSUploadMonitor.h"
 #import "../Shared/IPCProtocol.h"
 #import <objc/runtime.h>
@@ -32,15 +32,6 @@ static NSObject *GSLock;
 static NSMutableDictionary *GSCounts;
 // Each overlapping request owns one registration, even for the same asset.
 static NSCountedSet *GSReconciling;
-static BOOL GSMethod(id object, NSString *name, const char *encoding) {
-    Method m = class_getInstanceMethod(object_getClass(object), NSSelectorFromString(name));
-    return m && !strcmp(method_getTypeEncoding(m), encoding);
-}
-static id GSGet(id object, NSString *name) {
-    return GSMethod(object, name, "@16@0:8")
-               ? ((id(*)(id, SEL))objc_msgSend)(object, NSSelectorFromString(name))
-               : nil;
-}
 static void GSCount(NSString *key) {
     @synchronized(GSLock) {
         GSCounts[key] = @([GSCounts[key] unsignedIntegerValue] + 1);
@@ -72,18 +63,19 @@ static void GSFail(id request, NSInteger code) {
         ((void (*)(id, SEL, BOOL, id, NSInteger))objc_msgSend)(
             request, NSSelectorFromString(GSPhotosAssetCompletion(object_getClass(request))), NO,
             nil, code);
-    else if (GSMethod(request,
-                      @"didCompleteWithSuccess:resultantMediaItem:error:", "v36@0:8B16@20@28"))
+    else if (GSPhotosObjectHasMethod(
+                 request, @"didCompleteWithSuccess:resultantMediaItem:error:", "v36@0:8B16@20@28"))
         ((void (*)(id, SEL, BOOL, id, id))objc_msgSend)(
             request, NSSelectorFromString(@"didCompleteWithSuccess:resultantMediaItem:error:"), NO,
             nil, error);
-    else if (GSMethod(request, @"handleError:", "v24@0:8@16"))
+    else if (GSPhotosObjectHasMethod(request, @"handleError:", "v24@0:8@16"))
         ((void (*)(id, SEL, id))objc_msgSend)(request, NSSelectorFromString(@"handleError:"),
                                               error);
-    else if (GSMethod(request, @"handleErrorWithCode:", "v24@0:8q16"))
+    else if (GSPhotosObjectHasMethod(request, @"handleErrorWithCode:", "v24@0:8q16"))
         ((void (*)(id, SEL, NSInteger))objc_msgSend)(
             request, NSSelectorFromString(@"handleErrorWithCode:"), code);
-    else if (GSMethod(request, @"didCompleteWithError:resultantMediaItem:", "v32@0:8@16@24"))
+    else if (GSPhotosObjectHasMethod(request,
+                                     @"didCompleteWithError:resultantMediaItem:", "v32@0:8@16@24"))
         ((void (*)(id, SEL, id, id))objc_msgSend)(
             request, NSSelectorFromString(@"didCompleteWithError:resultantMediaItem:"), error, nil);
 }
@@ -121,13 +113,14 @@ static void GSReportProgress(id request, GSBackupTransfer *transfer, NSDictionar
             transfer.progress == progress)
             return;
         if (!GSNativeIdentityMatches(transfer.identityIdentifier) ||
-            !GSNativeAccountMatches(GSGet(GSGet(request, @"credentials"), @"accountID")))
+            !GSNativeAccountMatches(
+                GSPhotosGetObject(GSPhotosGetObject(request, @"credentials"), @"accountID")))
             return;
-        if (!GSMethod(request, @"progress", "d16@0:8"))
+        if (!GSPhotosObjectHasMethod(request, @"progress", "d16@0:8"))
             return;
         transfer.progress = progress;
-        id delegate = GSGet(request, @"delegate");
-        if (GSMethod(delegate, @"uploadRequestDidProgress:", "v24@0:8@16")) {
+        id delegate = GSPhotosGetObject(request, @"delegate");
+        if (GSPhotosObjectHasMethod(delegate, @"uploadRequestDidProgress:", "v24@0:8@16")) {
             ((void (*)(id, SEL, id))objc_msgSend)(
                 delegate, NSSelectorFromString(@"uploadRequestDidProgress:"), request);
             GSCount(@"progressUpdates");
@@ -145,7 +138,7 @@ static void GSStart(id request, SEL selector, IMP original) {
         ((void (*)(id, SEL))original)(request, selector);
         return;
     }
-    PHAsset *asset = GSGet(request, @"asset");
+    PHAsset *asset = GSPhotosGetObject(request, @"asset");
     // Export the PHAsset original, not a compressed GMUUploadAsset.
     if (![asset isKindOfClass:PHAsset.class]) {
         GSCount(@"unsupported");
@@ -170,7 +163,8 @@ static void GSStart(id request, SEL selector, IMP original) {
         if (transfer.cancelled)
             return;
         if (![destination isEqual:account[@"email"]] ||
-            !GSNativeAccountMatches(GSGet(GSGet(request, @"credentials"), @"accountID"))) {
+            !GSNativeAccountMatches(
+                GSPhotosGetObject(GSPhotosGetObject(request, @"credentials"), @"accountID"))) {
             GSCount(@"accountMismatch");
             GSFail(request, 2);
             return;
@@ -255,7 +249,8 @@ static void GSStart(id request, SEL selector, IMP original) {
                     return;
                 }
                 if (!GSNativeIdentityMatches(transfer.identityIdentifier) ||
-                    !GSNativeAccountMatches(GSGet(GSGet(request, @"credentials"), @"accountID"))) {
+                    !GSNativeAccountMatches(GSPhotosGetObject(
+                        GSPhotosGetObject(request, @"credentials"), @"accountID"))) {
                     GSCount(@"authorizationChanged");
                     GSFail(request, 2);
                     return;

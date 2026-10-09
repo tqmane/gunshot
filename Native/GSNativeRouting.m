@@ -1,7 +1,7 @@
 #import "../Shared/GSPhotosCompatibility.h"
 #import "../Shared/GSLocalization.h"
 #import "GSNativeRouting.h"
-#import "GSExporter.h"
+#import "../Media/GSExporter.h"
 #import "../Shared/IPCProtocol.h"
 #import "GSBackupRequests.h"
 #import "GSNativeAccount.h"

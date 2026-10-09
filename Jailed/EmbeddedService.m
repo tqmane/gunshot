@@ -3,7 +3,7 @@
 #import <UIKit/UIKit.h>
 #import <Network/Network.h>
 #import "libgotohp.h"
-#import "../UI/GSNativeAccount.h"
+#import "../Native/GSNativeAccount.h"
 
 // No external IPC in the jailed host. SSO can wait on main, so runtime snapshots
 // must never wait on the core queue (including when exporting diagnostics).

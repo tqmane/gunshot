@@ -1,6 +1,6 @@
 #import "GSBatchImport.h"
 #import "GSExporter.h"
-#import "GSNativeAccount.h"
+#import "../Native/GSNativeAccount.h"
 #import "../Shared/IPCProtocol.h"
 
 @interface GSImportBatch : NSObject

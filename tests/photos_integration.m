@@ -4,7 +4,7 @@
 #endif
 #import "host_profile.h"
 #import "../Shared/GSLocalization.h"
-#import "../UI/GSPhotosIntegration.h"
+#import "../Native/GSPhotosIntegration.h"
 #import <objc/runtime.h>
 #import <objc/message.h>
 #include <assert.h>
@@ -771,7 +771,7 @@ int main(void) {
         for (int i = 0; i < 5; i++)
             @autoreleasepool {
                 [NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:0.01]];
-            }             // Drain pending autoreleases pinning the object.
+            } // Drain pending autoreleases pinning the object.
         assert(released); // Alive through the integration's map, not this test.
         GSRefreshNativeLibrary();
         Drain(^BOOL {

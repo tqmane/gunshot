@@ -1,4 +1,4 @@
-#import "../Shared/GSPhotosCompatibility.h"
+#import "../Shared/GSPhotosRuntime.h"
 #import "../Shared/GSLocalization.h"
 #import "GSPhotosIntegration.h"
 #import "GSNativeAccount.h"
@@ -61,15 +61,6 @@ static NSString *GSMaskedText(NSString *text);
 static void GSRecordIn(NSMutableOrderedSet *set, NSString *text, NSUInteger limit);
 static void (*GSOriginalPanelLayout)(id, SEL);
 static void GSSchedulePanelCorrection(id controller);
-static BOOL GSMethod(id object, NSString *name, const char *encoding) {
-    Method m = class_getInstanceMethod(object_getClass(object), NSSelectorFromString(name));
-    return m && !strcmp(method_getTypeEncoding(m), encoding);
-}
-static id GSGet(id object, NSString *name) {
-    return GSMethod(object, name, "@16@0:8")
-               ? ((id(*)(id, SEL))objc_msgSend)(object, NSSelectorFromString(name))
-               : nil;
-}
 static void GSCount(NSString *key) {
     @synchronized(GSLock) {
         GSCounts[key] = @([GSCounts[key] unsignedIntegerValue] + 1);
@@ -127,7 +118,7 @@ void GSRefreshNativeLibrary(void) {
     });
 }
 static void GSCaptureSynchronizer(id object) {
-    id account = GSGet(object, @"accountID");
+    id account = GSPhotosGetObject(object, @"accountID");
     if (!account)
         return;
     // The app releases synchronizers between its own syncs, so only the newest
@@ -141,13 +132,13 @@ static void GSCaptureSynchronizer(id object) {
     });
 }
 static BOOL GSControllerBackedUp(id controller) {
-    return GSMethod(controller, @"isBackedUp", "B16@0:8") &&
+    return GSPhotosObjectHasMethod(controller, @"isBackedUp", "B16@0:8") &&
            ((BOOL(*)(id, SEL))objc_msgSend)(controller, NSSelectorFromString(@"isBackedUp"));
 }
 static BOOL GSPhotoModelReadable(id photo) {
     return [photo isKindOfClass:NSClassFromString(@"PHSServerPhoto")] &&
-           GSMethod(photo, @"hasOriginalBytes", "C16@0:8") &&
-           GSMethod(photo, @"isPartialBackup", "B16@0:8");
+           GSPhotosObjectHasMethod(photo, @"hasOriginalBytes", "C16@0:8") &&
+           GSPhotosObjectHasMethod(photo, @"isPartialBackup", "B16@0:8");
 }
 // Enum descriptor: Unknown=0, Yes=1, No=2, Maybe=3. Maybe is not Yes.
 static BOOL GSPhotoConfirmsOriginal(id photo) {
@@ -159,7 +150,7 @@ static BOOL GSPhotoConfirmsOriginal(id photo) {
 static BOOL GSHasConfirmedOriginal(id controller) {
     if (!GSControllerBackedUp(controller))
         return NO;
-    id photo = GSGet(GSGet(controller, @"extendedPhoto"), @"serverPhoto");
+    id photo = GSPhotosGetObject(GSPhotosGetObject(controller, @"extendedPhoto"), @"serverPhoto");
     if (!GSPhotoModelReadable(photo))
         return NO;
     unsigned char originals = ((unsigned char (*)(id, SEL))objc_msgSend)(
@@ -174,7 +165,7 @@ static BOOL GSHasConfirmedOriginal(id controller) {
     // uploads report Yes with a non-Standard storagePolicy, so the policy value is
     // recorded for diagnostics but does not gate the correction. The read is
     // native even when a row factory has the display override active.
-    if (GSMethod(photo, @"storagePolicy", "C16@0:8")) {
+    if (GSPhotosObjectHasMethod(photo, @"storagePolicy", "C16@0:8")) {
         GSNativeReads++;
         unsigned char policy = ((unsigned char (*)(id, SEL))objc_msgSend)(
             photo, NSSelectorFromString(@"storagePolicy"));
@@ -190,7 +181,7 @@ static id GSBackupStatus(id controller, SEL selector, IMP original) {
     id status = ((id(*)(id, SEL))original)(controller, selector);
     if (!status || !GSHasConfirmedOriginal(controller))
         return status;
-    NSString *backup = GSGet(status, @"backupStatus");
+    NSString *backup = GSPhotosGetObject(status, @"backupStatus");
     if (![backup isKindOfClass:NSString.class])
         return status;
     id replacement = [(PHSOneUpInfoPanelBackupStatusData *)[NSClassFromString(
@@ -246,7 +237,7 @@ static BOOL (*GSOriginalNeedsFullBackup)(id, SEL);
 static BOOL GSCountedNeedsFullBackup(id extended, SEL selector) {
     BOOL value = GSOriginalNeedsFullBackup(extended, selector);
     if (!GSNativeReads) {
-        BOOL original = GSPhotoConfirmsOriginal(GSGet(extended, @"serverPhoto"));
+        BOOL original = GSPhotoConfirmsOriginal(GSPhotosGetObject(extended, @"serverPhoto"));
         GSCount([NSString stringWithFormat:@"needsFullBackup%@%@", original ? @"Original" : @"",
                                            value ? @"Yes" : @"No"]);
     }
@@ -282,7 +273,7 @@ static NSString *GSStatusSubtitle(id controller, BOOL native) {
             GSScopeController = previous;
         }
     }
-    NSString *text = GSGet(status, @"backupStatusSubtitle");
+    NSString *text = GSPhotosGetObject(status, @"backupStatusSubtitle");
     return [text isKindOfClass:NSString.class] && text.length ? text : nil;
 }
 static NSString *GSNativeQualityText(id controller) {
@@ -410,7 +401,7 @@ static NSArray<NSString *> *GSSaverWordings(id controller) {
             GSForcedPolicy = 0;
             GSNativeReads--;
         }
-        NSString *text = GSPlainText(GSGet(status, @"backupStatusSubtitle"), NO);
+        NSString *text = GSPlainText(GSPhotosGetObject(status, @"backupStatusSubtitle"), NO);
         if (!text.length)
             continue;
         if (policy == GSServerOriginalPolicy)
@@ -490,9 +481,9 @@ static BOOL GSReplaceInObject(id object, NSString *from, NSString *to, NSUIntege
         NSString *setter =
             [NSString stringWithFormat:@"set%@%@:", [[key substringToIndex:1] uppercaseString],
                                        [key substringFromIndex:1]];
-        if (!GSMethod(object, key, "@16@0:8"))
+        if (!GSPhotosObjectHasMethod(object, key, "@16@0:8"))
             continue;
-        id value = GSGet(object, key);
+        id value = GSPhotosGetObject(object, key);
         if (!value)
             continue;
         BOOL replaced = NO;
@@ -501,7 +492,7 @@ static BOOL GSReplaceInObject(id object, NSString *from, NSString *to, NSUIntege
             continue;
         // Nested models edited in place need no setter; a new value does.
         if (updated != value) {
-            if (!GSMethod(object, setter, "v24@0:8@16"))
+            if (!GSPhotosObjectHasMethod(object, setter, "v24@0:8@16"))
                 continue;
             ((void (*)(id, SEL, id))objc_msgSend)(object, NSSelectorFromString(setter), updated);
         }
@@ -542,7 +533,8 @@ static BOOL GSCorrectRow(id row, NSArray<NSString *> *candidates) {
 }
 static BOOL GSControllerConfirmsOriginal(id controller) {
     return GSControllerBackedUp(controller) &&
-           GSPhotoConfirmsOriginal(GSGet(GSGet(controller, @"extendedPhoto"), @"serverPhoto"));
+           GSPhotoConfirmsOriginal(
+               GSPhotosGetObject(GSPhotosGetObject(controller, @"extendedPhoto"), @"serverPhoto"));
 }
 // Non-original wordings first: the native subtitle may already read original.
 static NSArray<NSString *> *GSAllCandidates(id controller) {
@@ -642,7 +634,7 @@ static void GSObserveRow(id row) {
 }
 // Only a controller that already shows the photo as backed up opens the scope.
 static NSUInteger GSEnterDisplay(id controller) {
-    id photo = GSGet(controller, @"extendedPhoto");
+    id photo = GSPhotosGetObject(controller, @"extendedPhoto");
     if (!GSControllerBackedUp(controller)) {
         if (NSThread.isMainThread && photo && photo == GSActiveExtendedPhoto)
             GSActiveExtendedPhoto = nil;
@@ -667,9 +659,10 @@ static id GSBackupRow(id controller, SEL selector, id model, id item, id serverP
         GSDisplayScope -= entered;
     }
     GSObserveRow(row);
-    id photo = [serverPhoto isKindOfClass:NSClassFromString(@"PHSServerPhoto")]
-                   ? serverPhoto
-                   : GSGet(GSGet(controller, @"extendedPhoto"), @"serverPhoto");
+    id photo =
+        [serverPhoto isKindOfClass:NSClassFromString(@"PHSServerPhoto")]
+            ? serverPhoto
+            : GSPhotosGetObject(GSPhotosGetObject(controller, @"extendedPhoto"), @"serverPhoto");
     if (row && entered && GSPhotoConfirmsOriginal(photo)) {
         NSArray *candidates = GSAllCandidates(controller);
         GSRecordQualityCandidates(GSQualityCandidates(controller));
@@ -702,7 +695,7 @@ static void GSBackupStatusUI(id controller, SEL selector) {
         GSDisplayScope -= entered;
     }
     GSSchedulePanelCorrection(controller);
-    GSCorrectRows(controller, GSGet(controller, @"detailsStackViewModels"), NO);
+    GSCorrectRows(controller, GSPhotosGetObject(controller, @"detailsStackViewModels"), NO);
 }
 // Layout-time correction. Device counters (2026-09-24, 10 rows) show every
 // policy getter overridden in the row factory while the panel still read
@@ -782,15 +775,15 @@ static void GSRecordAccessibility(id element, NSUInteger depth, NSUInteger *budg
     if (!element || depth > 2 || !*budget)
         return;
     (*budget)--;
-    NSString *label = GSGet(element, @"accessibilityLabel"),
-             *value = GSGet(element, @"accessibilityValue");
+    NSString *label = GSPhotosGetObject(element, @"accessibilityLabel"),
+             *value = GSPhotosGetObject(element, @"accessibilityValue");
     if ([label isKindOfClass:NSString.class] && label.length) {
         GSCount(@"panelA11yElements");
         GSRecordPanelText([@"a11y: " stringByAppendingString:label]);
     }
     if ([value isKindOfClass:NSString.class] && value.length)
         GSRecordPanelText([@"a11y-value: " stringByAppendingString:value]);
-    NSArray *children = GSGet(element, @"accessibilityElements");
+    NSArray *children = GSPhotosGetObject(element, @"accessibilityElements");
     if ([children isKindOfClass:NSArray.class])
         for (id child in [children copy])
             GSRecordAccessibility(child, depth + 1, budget);
@@ -841,9 +834,9 @@ static void GSRecordRowShape(id object, NSString *path, NSUInteger depth) {
     if ([object isKindOfClass:NSClassFromString(@"UIView")])
         return;
     for (NSString *key in GSTextKeys())
-        if (GSMethod(object, key, "@16@0:8"))
-            GSRecordRowShape(GSGet(object, key), [NSString stringWithFormat:@"%@.%@", path, key],
-                             depth + 1);
+        if (GSPhotosObjectHasMethod(object, key, "@16@0:8"))
+            GSRecordRowShape(GSPhotosGetObject(object, key),
+                             [NSString stringWithFormat:@"%@.%@", path, key], depth + 1);
 }
 static BOOL GSIsTextView(id view) {
     return [view isKindOfClass:NSClassFromString(@"UILabel")] ||
@@ -857,8 +850,8 @@ static void GSCorrectPanelView(id view, NSArray<NSString *> *candidates, NSStrin
     GSRecordIn(GSPanelViewClasses, NSStringFromClass(object_getClass(view)), 24);
     if (GSIsTextView(view)) {
         GSCount(@"panelLabelsSeen");
-        id attributed = GSGet(view, @"attributedText");
-        NSString *text = GSGet(view, @"text");
+        id attributed = GSPhotosGetObject(view, @"attributedText");
+        NSString *text = GSPhotosGetObject(view, @"text");
         GSRecordPanelText(text);
         for (NSString *from in candidates) {
             if (![text isKindOfClass:NSString.class] || ![text containsString:from] ||
@@ -866,13 +859,13 @@ static void GSCorrectPanelView(id view, NSArray<NSString *> *candidates, NSStrin
                 continue;
             BOOL replaced = NO;
             if ([attributed isKindOfClass:NSAttributedString.class] &&
-                GSMethod(view, @"setAttributedText:", "v24@0:8@16")) {
+                GSPhotosObjectHasMethod(view, @"setAttributedText:", "v24@0:8@16")) {
                 id value = GSReplacedText(attributed, from, to, &replaced);
                 if (replaced)
                     ((void (*)(id, SEL, id))objc_msgSend)(
                         view, NSSelectorFromString(@"setAttributedText:"), value);
             }
-            if (!replaced && GSMethod(view, @"setText:", "v24@0:8@16")) {
+            if (!replaced && GSPhotosObjectHasMethod(view, @"setText:", "v24@0:8@16")) {
                 ((void (*)(id, SEL, id))objc_msgSend)(
                     view, NSSelectorFromString(@"setText:"),
                     [text stringByReplacingOccurrencesOfString:from withString:to]);
@@ -887,24 +880,27 @@ static void GSCorrectPanelView(id view, NSArray<NSString *> *candidates, NSStrin
         NSUInteger elements = 48;
         GSRecordAccessibility(view, 0, &elements);
     }
-    NSArray *subviews = GSGet(view, @"subviews");
+    NSArray *subviews = GSPhotosGetObject(view, @"subviews");
     if ([subviews isKindOfClass:NSArray.class])
         for (id child in [subviews copy])
             GSCorrectPanelView(child, candidates, to, depth + 1, budget);
 }
 static void GSCorrectPanel(id controller) {
     if (GSWalkingPanel || !GSControllerBackedUp(controller) ||
-        !GSPhotoConfirmsOriginal(GSGet(GSGet(controller, @"extendedPhoto"), @"serverPhoto")))
+        !GSPhotoConfirmsOriginal(
+            GSPhotosGetObject(GSPhotosGetObject(controller, @"extendedPhoto"), @"serverPhoto")))
         return;
     // The SwiftUI stack re-reads its row models, so they are corrected first. The
     // rows are recorded again here: content set after the factories (device: the
     // backup row had no expandedContent at build time) is only visible now, as
     // are the controller's other content models and its learn-more link table.
-    GSCorrectModels(controller, GSGet(controller, @"detailsStackViewModels"), @"layout-rows");
-    GSCorrectModels(controller, GSGet(controller, @"infoContentViewModels"), @"info");
-    GSRecordRowShape(GSGet(controller, @"localAssetInfoModel"), @"localAssetInfo", 1);
-    GSRecordRowShape(GSGet(controller, @"stackViewLearnMoreLinks"), @"learnMoreLinks", 1);
-    id view = GSGet(controller, @"viewIfLoaded");
+    GSCorrectModels(controller, GSPhotosGetObject(controller, @"detailsStackViewModels"),
+                    @"layout-rows");
+    GSCorrectModels(controller, GSPhotosGetObject(controller, @"infoContentViewModels"), @"info");
+    GSRecordRowShape(GSPhotosGetObject(controller, @"localAssetInfoModel"), @"localAssetInfo", 1);
+    GSRecordRowShape(GSPhotosGetObject(controller, @"stackViewLearnMoreLinks"), @"learnMoreLinks",
+                     1);
+    id view = GSPhotosGetObject(controller, @"viewIfLoaded");
     if (!view)
         return;
     NSString *from = GSNativeQualityText(controller);

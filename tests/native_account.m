@@ -1,12 +1,12 @@
 #import "host_profile.h"
-#import "../UI/GSNativeAccount.h"
+#import "../Native/GSNativeAccount.h"
 #import <objc/runtime.h>
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 #if GS_TEST_DAEMON_RELAY || GS_TEST_AUTOCONNECT
-#import "../UI/GSNativeRelay.h"
-#import "../UI/GSAccountConnection.h"
+#import "../Native/GSNativeRelay.h"
+#import "../Native/GSAccountConnection.h"
 static NSUInteger relayConnections, relayRefreshes, relayClears;
 static BOOL relayReject;
 NSDictionary *GSRequest(NSDictionary *request, NSError **error) {

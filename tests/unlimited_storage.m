@@ -1,5 +1,5 @@
 #import "host_profile.h"
-#import "../UI/GSUnlimitedStorage.h"
+#import "../Native/GSUnlimitedStorage.h"
 #import "unlimited_storage_fixture.h"
 #import <objc/runtime.h>
 #include <assert.h>

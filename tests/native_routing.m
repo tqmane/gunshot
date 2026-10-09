@@ -1,5 +1,5 @@
 #import "host_profile.h"
-#import "../UI/GSNativeRouting.h"
+#import "../Native/GSNativeRouting.h"
 #import <objc/runtime.h>
 #include <assert.h>
 

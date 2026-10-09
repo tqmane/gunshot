@@ -1,22 +1,22 @@
 #import "../Shared/GSLocalization.h"
 #import "GSPanel.h"
 #import "GSPhotosGlass.h"
-#import "GSExporter.h"
-#import "GSBatchImport.h"
+#import "../Media/GSExporter.h"
+#import "../Media/GSBatchImport.h"
 #import "GSAlbumPicker.h"
-#import "GSNativeAccount.h"
-#import "GSAccountConnection.h"
+#import "../Native/GSNativeAccount.h"
+#import "../Native/GSAccountConnection.h"
 #if !GS_JAILED
-#import "GSNativeRelay.h"
+#import "../Native/GSNativeRelay.h"
 #else
 #import "../Jailed/SideloadIdentity.h"
 #endif
-#import "GSNativeRouting.h"
-#import "GSUploadDiagnostics.h"
-#import "GSUnlimitedStorage.h"
-#import "GSBackupRequests.h"
-#import "GSPhotosIntegration.h"
-#import "GSUploadMonitor.h"
+#import "../Native/GSNativeRouting.h"
+#import "../Native/GSUploadDiagnostics.h"
+#import "../Native/GSUnlimitedStorage.h"
+#import "../Native/GSBackupRequests.h"
+#import "../Native/GSPhotosIntegration.h"
+#import "../Native/GSUploadMonitor.h"
 #import "../Shared/IPCProtocol.h"
 #import <PhotosUI/PhotosUI.h>
 #import <objc/runtime.h>

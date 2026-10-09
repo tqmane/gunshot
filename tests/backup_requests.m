@@ -10,8 +10,8 @@
 #define GS_FAILURE error
 #endif
 #import "host_profile.h"
-#import "../UI/GSBackupRequests.h"
-#import "../UI/GSNativeRouting.h"
+#import "../Native/GSBackupRequests.h"
+#import "../Native/GSNativeRouting.h"
 #import "native_account_fixture.h"
 #import "../Shared/IPCProtocol.h"
 #import <objc/runtime.h>

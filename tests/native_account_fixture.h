@@ -1,6 +1,6 @@
 #pragma once
 #import <Foundation/Foundation.h>
-#import "../UI/GSNativeAccount.h"
+#import "../Native/GSNativeAccount.h"
 #include <assert.h>
 
 // Both audited IPAs use an opaque GIPGaiaAccountID value in native requests

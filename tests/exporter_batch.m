@@ -1,5 +1,5 @@
-#import "../UI/GSBatchImport.h"
-#import "../UI/GSExporter.h"
+#import "../Media/GSBatchImport.h"
+#import "../Media/GSExporter.h"
 #include <assert.h>
 #include <stdatomic.h>
 
