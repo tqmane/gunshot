@@ -25,6 +25,8 @@ jobs:
         with:
           go-version: '1.26.0'
       - run: python3 -m pip install clang-format==18.1.8 black==25.1.0
+      - name: Inspect RAW pairing Go formatting
+        run: gofmt -d GotohpCore/overlay/backend/gunshot_raw_pair_upload_test.go
       - run: python3 scripts/format.py --check
       - run: bash scripts/test-core.sh
   package:
