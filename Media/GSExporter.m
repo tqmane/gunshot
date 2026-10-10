@@ -26,6 +26,14 @@ static BOOL GSResourceIsJPEG(PHAssetResource *resource) {
     return [uti isEqualToString:@"public.jpeg"] ||
            (extension.length && [@[ @"jpg", @"jpeg", @"jpe" ] containsObject:extension]);
 }
+static BOOL GSResourceIsRenderedImage(PHAssetResource *resource) {
+    if (GSResourceIsJPEG(resource))
+        return YES;
+    NSString *uti = resource.uniformTypeIdentifier.lowercaseString;
+    NSString *extension = resource.originalFilename.pathExtension.lowercaseString;
+    return [uti isEqualToString:@"public.heic"] || [uti isEqualToString:@"public.heif"] ||
+           [@[ @"heic", @"heif" ] containsObject:extension];
+}
 static NSArray<NSURL *> *GSWriteOriginalResources(PHAsset *asset, NSURL *directory,
                                                   NSError **error) {
     NSArray *resources = [PHAssetResource assetResourcesForAsset:asset];
@@ -38,16 +46,27 @@ static NSArray<NSURL *> *GSWriteOriginalResources(PHAsset *asset, NSURL *directo
             primary = r;
             break;
         }
-    // Depending on the camera/import path, RAW can be the primary resource
-    // and its JPEG counterpart an alternatePhoto. Sending only the primary
-    // in that case uploads the RAW instead of the user's JPEG.
-    if (asset.mediaType == PHAssetMediaTypeImage && GSResourceIsRAW(primary))
+    // One PHAsset can contain both the rendered JPEG/HEIC and the RAW original.
+    // Preserve both resources, ordered cover-first, regardless of which resource
+    // PhotoKit exposes as the primary photo. Do not pair unrelated PHAssets.
+    PHAssetResource *cover = nil, *raw = nil;
+    if (asset.mediaType == PHAssetMediaTypeImage && primary) {
+        if (GSResourceIsRenderedImage(primary))
+            cover = primary;
+        else if (GSResourceIsRAW(primary))
+            raw = primary;
         for (PHAssetResource *r in resources)
-            if (r.type == PHAssetResourceTypeAlternatePhoto && GSResourceIsJPEG(r)) {
-                primary = r;
-                break;
+            if (r.type == PHAssetResourceTypeAlternatePhoto) {
+                if (!cover && GSResourceIsRenderedImage(r))
+                    cover = r;
+                if (!raw && GSResourceIsRAW(r))
+                    raw = r;
             }
-    if (primary)
+    }
+    if (cover && raw) {
+        [chosen addObject:cover];
+        [chosen addObject:raw];
+    } else if (primary)
         [chosen addObject:primary];
     if (asset.mediaSubtypes & PHAssetMediaSubtypePhotoLive)
         for (PHAssetResource *r in resources)
