@@ -1,32 +1,54 @@
-# Bulk import and troubleshooting
+# アルバム一括インポート・トラブル対処ガイド
 
-[Documentation index](README.md) · [Native backup routing](native-routing.md)
+大量の写真や動画をまとめて Google フォトにバックアップしたい場合は、**「アルバムを選択」** 機能を利用します。  
+iOS 標準の写真選択ピッカーの制限を回避し、数千枚単位のメディアを安定してキューに追加できます。
 
-## Choose an album
+---
 
-Open **GoToHP settings → Uploads → Choose album**. Browse smart/user albums or open a folder to choose a child album, then confirm the accessible item count. Folders are navigation containers, not recursive upload selections. Limited photo permission may hide albums or exclude items.
+## 📸 「写真・動画を選択」と「アルバムを選択」の違い
 
-This path uses a PhotoKit fetch result instead of loading thousands of PHPicker selections. **Choose photos and videos** accepts up to 100 items per selection; that is GoToHP's limit, not an Apple-documented failure threshold. If the system picker shows **Unable to Load Items**, cancel it and use **Choose album**.
+| 機能 | 特徴・制限 | 推奨する場面 |
+| :--- | :--- | :--- |
+| **写真・動画を選択** | iOS標準の写真ピッカーを使用。<br>**1回の選択上限は 100 件まで**。 | 数枚〜数十枚の写真をさくっと個別に選んでアップロードしたいとき |
+| **アルバムを選択** | PhotoKit からアルバムの全データを直接読み込み。<br>**数千枚でも一括でキューに追加可能**。 | これまでの写真ライブラリ全体や、特定のアルバムを一括でバックアップしたいとき |
 
-## Preparation and restart
+> [!TIP]
+> 写真ピッカーで **「Unable to Load Items（アイテムを読み込めません）」** というエラーが出た場合は、iOS のメモリやキャッシュの問題である可能性が高いため、キャンセルして **「アルバムを選択」** をご利用ください。
 
-Only one preparation batch runs in the host at a time. A shared serial exporter bounds PhotoKit/iCloud requests from both manual imports and native backup. Identifier lookup runs off the main thread in pages of 64 and matches by identifier, not result order. HEIC/HEIF stays unconverted; Live Photos retain the original still and paired video. Upload concurrency is configured separately.
+---
 
-Keep the host open while preparing. **Stop preparing** stops after the current item and keeps queued jobs. An expired background task also stops preparation. Items not yet in the durable queue do not survive process termination. Reselect after reopening; account/quality/content deduplication reuses existing queue entries.
+## 🚀 アルバムからの一括インポート手順
 
-Individual unreadable originals count as failed while the rest continue. Account changes, unavailable service, storage failure or rejected queue requests stop preparation. Check photo access and iCloud availability before retrying. A commit with an unknown outcome needs cloud-side inspection first; retries may otherwise duplicate media.
+1. **Google フォトを起動**し、画面右上の **プロフィールアイコン →「GoToHP の設定」** を開きます。
+2. **アップロード →「アルバムを選択」** をタップします。
+3. 端末内のアルバム一覧（スマートアルバム、マイアルバム、フォルダ等）が表示されるので、アップロードしたいアルバムを選択します。
+4. 対象のアイテム数が表示されますので、内容を確認して **インポートを開始** します。
+5. キューに順次登録され、アップロードが始まります。
 
-## Diagnostics
+---
 
-Export diagnostics before restarting the host when investigating preparation failures.
+## ⚙️ 一括処理中の注意点と動作仕様
 
-| Field | Meaning |
-| --- | --- |
-| `batchImport` | Latest in-memory preparation: source, stage, counts and fixed failure/stop codes; resets on process exit |
-| `completionMonitor.uploadSummary.mediaTypes` | Persisted job counts by HEIC/HEIF, HEIC Live Photo, other Live Photo, JPEG, PNG, video or other |
-| `completionMonitor.uploadSummary` | Queue outcome/failure codes; completed does not establish quota treatment |
-| `photosIntegration` | Native synchronization requests/waits; cloud completion and grid refresh are separate |
+- **処理中はアプリを開いたままにする**:
+  - 写真・動画の原本（HEIC、RAW、Live Photo の静止画＋動画ペア）を PhotoKit から 1 件ずつ安全に抽出してキューに登録します。
+  - キューへの登録処理（準備中）の間は、Google フォトアプリを開いたままにしてください。
+- **処理を中断したい場合**:
+  - 設定画面から **「準備を停止」** をタップすると、現在処理中の 1 件が完了した時点でインポートが安全に停止します。
+  - すでにキューに登録されたアイテムは保持され、アップロードが続行されます。
+- **重複の自動防止**:
+  - すでにアップロード済み、またはキューに登録済みのファイルは自動的にスキップ（重複排除）されます。同じアルバムを再度選択しても、二重にアップロードされる心配はありません。
+- **iCloud 写真（最適化された写真）について**:
+  - 原本が iCloud 上にあり端末に保存されていない写真は、PhotoKit 経由で iCloud からダウンロードが行われます。ネットワーク状態や iCloud の容量制限にご注意ください。
 
-Diagnostics exclude filenames, asset/account identifiers, tokens and raw upstream errors. Aggregate failure counts alone cannot identify a codec or server failure. The original large-selection report is [issue #21](https://github.com/tqmane/gunshot/issues/21); it motivated the album path.
+---
 
-Fixtures exercise 2,000 identifiers, reordered/missing results, export failure, cancellation and account changes. Export/import fixtures compare original bytes and timestamps across 60 HEIC/HEIF resources, including a Live Photo. These prove orchestration and byte preservation, not image decoding or Google's servers. Use the [device checklist](device-validation.md) for real albums and cloud-only media.
+## ❓ トラブルシューティング
+
+- **一部の写真が「失敗」としてカウントされる**:
+  - 破損しているファイルや、iCloud から原本をダウンロードできなかったアイテムはスキップされ、残りの写真のインポートが続行されます。
+  - 写真アプリへのアクセス権限が「すべての写真へのアクセスを許可」になっているか、iOS の設定からご確認ください。
+- **アップロードが途中で止まった**:
+  - **非脱獄（Jailed）版の場合**: Google フォトが画面前面（フォアグラウンド）にあるか確認してください。画面をタップして再開させます。
+  - **脱獄版の場合**: デーモン (`gotohpd`) がバックグラウンドで動作し続けます。もし停止している場合は Google フォトを再度開いてみてください。
+- **診断情報の確認**:
+  - 「GoToHP の設定」で **Upload diagnostics** を有効にし、**Export diagnostics** を実行すると、インポート処理やメディア種別ごとの成否状況を詳細に確認できます。

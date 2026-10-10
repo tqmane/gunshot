@@ -1,56 +1,92 @@
-# Development
+# 開発・ビルド・テストガイド
 
-[Documentation index](README.md) · [Architecture and source map](architecture.md)
+Gunshot (GoToHP for iOS) のローカル開発環境構築、ビルド、テスト実行、およびパッケージ作成の手順です。
 
-## Checkout and requirements
+---
+
+## 🛠️ 必要要件
+
+- **OS**: macOS（推奨）または Linux
+  - ※ネイティブ Objective-C / Theos のビルドには macOS と Xcode Command Line Tools が必要です。
+  - ※Go コアの単体テストは Linux や Windows でも実行可能です。
+- **Go**: 1.22 以上（Go 1.26 推奨）
+- **Python**: 3.10 以上
+- **パッケージビルド用ツール**:
+  - [Theos](https://theos.dev/)（`$THEOS` 環境変数の設定が必要）
+  - `ldid`
+  - `dpkg` (macOS の場合は `brew install dpkg`)
+
+---
+
+## 📥 リポジトリのクローン
+
+サブモジュール（`GotohpCore/upstream` 等）を含めてクローンします。
 
 ```sh
 git clone --recurse-submodules https://github.com/tqmane/gunshot.git
 cd gunshot
 ```
 
-Core checks run on Linux or macOS with **Go 1.26.0**, Python 3 and a C compiler. Native fixtures require macOS/Xcode. Device packages additionally require Theos, `ldid` and `dpkg`. CI pins Theos in [setup-theos.sh](../scripts/setup-theos.sh).
+---
 
-## Checks
+## 🧪 テストと品質チェック
 
-Run commands from the repository root. CI uses these same scripts.
+リポジトリ直下で以下のスクリプトを実行して検証します。CI (GitHub Actions) でも同様のチェックが行われます。
 
-| Command | Coverage |
-| --- | --- |
-| `bash scripts/test-core.sh` | Localization, upstream projection, Go race tests, projected backend tests, vet and the real C/Go bridge |
-| `bash scripts/test-native.sh` | All macOS native fixtures; optional `jailbreak` / `jailed` argument selects a suite |
-| `python3 scripts/format.py --check` | First-party native, Go and Python formatting |
-| `python3 scripts/verify-package.py jailed` | Built package layout; also accepts `rootless` / `rootful` |
+| コマンド | 内容 |
+| :--- | :--- |
+| `bash scripts/test-core.sh` | ローカライズ整合性、Go コアの投影、race 検出付き単体テスト、C/Go ブリッジ結合テスト |
+| `bash scripts/test-native.sh` | macOS 上でのネイティブ Objective-C テスト（引数に `jailed` または `jailbreak` を指定可能） |
+| `python3 scripts/format.py --check` | コードフォーマット検証（Objective-C, Go, Python） |
+| `python3 scripts/verify-package.py jailed` | 生成されたパッケージの構成検証（`rootless` / `rootful` も指定可） |
 
-Native fixtures cover modern/legacy APIs, unrelated version strings, incompatible ABIs, account changes, backup handoff, reconciliation, diagnostics, PhotoKit import and IPC. They simulate private API contracts; they do not log into Google or verify cloud playback/quota. Use the [device checklist](device-validation.md) for that.
+### コードの自動整形
 
-## Formatting and source ownership
-
-Install the development formatters (`python3 -m pip install clang-format==18.1.8 black==25.1.0`), then run `python3 scripts/format.py` before committing. The script uses `.clang-format`, `gofmt` and Black; it excludes generated localization and the upstream submodule. `Tweak.xm` uses Logos syntax and is maintained manually. Python uses four-space indentation; shell scripts use Bash with `set -euo pipefail`.
-
-Keep UI presentation in `UI/`, host integration in `Native/`, and original export/import in `Media/`. Add shared host sources to [sources.mk](../sources.mk), which both packages consume. Preserve private-method ABI checks, account checks, callback ordering and inherited-method scoping. Reuse `Shared/GSPhotosRuntime.h` for checked object getters; do not replace checked calls with unchecked `performSelector:` calls.
-
-## Upstream projection
-
-`GotohpCore/upstream` is an immutable submodule pinned by [UPSTREAM_REVISION](../GotohpCore/UPSTREAM_REVISION). Build preparation copies its backend/generated code into `.build/upstream`, removes desktop-only pieces and applies the small iOS adaptations in [prepare-core.py](../scripts/prepare-core.py).
-
-The maintained adaptations and their tests live together in `GotohpCore/overlay/backend/` as ordinary `.go` files. `configmanager.go.tmpl` is the only template: preparation inserts upstream's Preferences definitions and setters. The overlay's `go.mod` defines the projected module and prevents the root `go test ./...` from compiling these incomplete inputs in isolation. **Test the assembled projection with `go test -tags cli app/backend`**, or simply use `test-core.sh`.
-
-Do not edit `.build/upstream`; it is replaced on each preparation. `replace_once` guards patch anchors so upstream drift cannot silently drop TLS/auth adaptations. To update the pin:
+コミット前に以下のコマンドを実行してフォーマットを整えます：
 
 ```sh
-bash scripts/sync-upstream.sh <commit>
+python3 -m pip install clang-format==18.1.8 black==25.1.0
+python3 scripts/format.py
 ```
 
-Review the upstream diff, projection changes and device behavior before committing both the submodule pointer and revision file. The projection tests include Live Photo component reconciliation, quality serialization, context cancellation and native authentication. Keep upstream's license and distribution notices.
+---
 
-## Build and release
+## 📦 パッケージのビルド
+
+Theos を使用して、各環境向けの `.deb` パッケージおよび `.dylib` をビルドします。
 
 ```sh
 export THEOS="$HOME/theos"
-bash scripts/package.sh jailed  # or rootless / rootful
+
+# 非脱獄向け（Sideload / LiveContainer）
+bash scripts/package.sh jailed
+
+# 脱獄向け（Rootless）
+bash scripts/package.sh rootless
+
+# 脱獄向け（Rootful）
+bash scripts/package.sh rootful
 ```
 
-Jailed output is in `packages/jailed/`; jailbreak output is in `packages/`. Build dependencies are not required to install prebuilt packages. [Jailed installation](jailed.md) explains injection and signing.
+- **非脱獄向け成果物**: `packages/jailed/` に `gotohp-tweak-jailed.deb` と `GunshotJailed.dylib` が生成されます。
+- **脱獄向け成果物**: `packages/` に `gotohp-tweak-rootless.deb` 等が生成されます。
 
-The [workflow](../.github/workflows/build.yml) builds all three package schemes. A successful `v*` tag build publishes assets. For an existing tag, use **Actions → Build and test → Run workflow**, choose the updated workflow branch, and enter `release_tag`. It builds that tag's source without moving the tag, replaces identically named assets, and preserves an existing release's title and notes. Empty `release_tag` builds only. Re-running an old job uses its old workflow.
+---
+
+## 🔄 アップストリーム (xob0t/gotohp) の同期
+
+Gunshot は [xob0t/gotohp](https://github.com/xob0t/gotohp) をサブモジュールとして取り込み、iOS 向けのアダプターをオーバーレイして使用しています。
+
+1. アップストリームの新しいコミットを取り込む：
+   ```sh
+   bash scripts/sync-upstream.sh <commit_hash>
+   ```
+2. `GotohpCore/overlay/backend/` の iOS 独自実装との整合性を確認し、`bash scripts/test-core.sh` でテストが通ることを確認します。
+3. 問題がなければコミットします。
+
+---
+
+## 🚀 リリースと GitHub Actions
+
+- Git タグ（例: `v1.0.0`）をプッシュすると、GitHub Actions のビルドワークフローが自動実行され、全 3 種類のパッケージが Release に自動添付されます。
+- 既存のリリースタグでビルドをやり直す場合は、GitHub Actions の **「Build and test」→「Run workflow」** から `release_tag` にタグ名を入力して実行できます。

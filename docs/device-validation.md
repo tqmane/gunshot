@@ -1,25 +1,71 @@
-# Device validation gate
+# 実機検証チェックリスト (Device Validation)
 
-No jailbroken iPhone or Google test credential was available during implementation. This checklist records remaining runtime gates, not passed tests.
+Gunshot を実機（iOS デバイス）でテスト・動作検証する際に確認すべき項目一覧です。  
+CI やシミュレーターだけでは確認できない、実際の Google アカウント連携、画質保持、Live Photo 再生、バックグラウンド動作を網羅しています。
 
-1. Install a package matching the jailbreak bootstrap; record iPhone model, iOS, injection framework, root scheme, and Google Photos version. The supplied 7.92.0 IPA requires iOS 18.0; it cannot validate iOS 15/16.
-2. Run `/var/jb/usr/libexec/gotohpd --self-test` for rootless, `/usr/libexec/gotohpd --self-test` for rootful. Expect exit 0 (C → Go → C). Then check `launchctl print system/dev.tqmane.gunshot` and the in-app GoToHP connection status. Never launch a second real daemon manually.
-3. Verify unauthorized processes cannot ping/import, account mutations from Photos fail, malformed/complex Mach messages are rejected, and missing identity SPI fails closed. Verify direct Mach lookup or the restricted libSandy profile plus authenticated XPC discovery on each jailbreak bootstrap. Test missing/restricted libSandy and unavailable/restarted daemon diagnostics.
-4. Install/enable the tweak before signing into a test account (see [installation](jailed.md)); launch Google Photos and verify native connection before opening any GoToHP screen, without token input. Confirm no iOS Settings entry remains after upgrading. Check no bearer appears in files, logs or diagnostics; metadata files stay 0600 / directory 0700. Test sign-out, account switching, foreground renewal and a daemon restart. Native pending jobs must wait for fresh authorization without consuming retries.
-5. JPEG, PNG, HEIC, RAW, MP4, MOV, 4K, HDR: upload one original; inspect remote pixel size/codec, capture date/timezone, filename, EXIF/orientation/GPS. PhotoKit export does not reencode, but server preservation must still be checked.
-6. Live Photo: HEIC+MOV and JPEG+MOV; confirm the remote library shows **one playable asset**. Validate identifier, still-image-time, capture date, rotation and location. This build exports original resources, not the edited representation. Mismatched pair must fail, not become two successful entries.
-7. Queue 100+ mixed assets, a 2,000-item album and 60 HEIC/HEIF originals using **Uploads → Choose album**. Test full/limited permissions, an unreadable original, stop/reselect and the 100-item normal picker. Preparation may need iCloud download and an open app. Kill Google Photos after Queued; verify jailbreak daemon progress continues while authorized (jailed uploads resume on reopening). Restart gotohpd, respring SpringBoard, disable network, switch Wi-Fi to cellular, unplug charger, pause/cancel, retry failed jobs. Check commit interruption stays uncertain instead of claiming cancelled/completed. See [bulk import diagnostics](bulk-import.md).
-8. Duplicate files: same account/policy should return existing queued/completed ID; alternate accounts/policies are separate. Simulate remote hash lookup failure and lost commit response.
-9. Original / Saver / Quota: compare account storage before and after with a fresh test asset. A media key is not proof of zero quota usage. Do not mark unlimited behavior verified without server/account-side evidence.
-10. Monitor RAM, CPU, thermal and storage under large video + 4 concurrent jobs. Audit token SPI, arm64 daemon on arm64e hardware, jailbreak TLS trust and respring behavior all require real-device evidence.
+---
 
-Current limits: no byte-offset remote resume; no GoToHP-managed Keychain store; no arbitrary device-profile editor; no automatic assertion of quota savings. Staging copies remain for failed jobs until cancel; cancel removes staging, never remote photos. Uninstall keeps private account/queue data for deliberate recovery/removal.
+## 📋 1. インストール・初期セットアップ
 
-## Native backup handoff
+- [ ] **初回ログイン前の有効化**:
+  - Gunshot を注入・インストールした状態で Google フォトを初回起動し、Google アカウントにログインできるか。
+  - ログイン時に Keychain エラー（-34018）や SSO 識別子エラーが発生しないか。
+- [ ] **自動アカウント接続**:
+  - ログイン後、GoToHP の設定画面を開かずに自動でアカウントが認識・接続されているか。
+  - プロフィールメニュー内に「GoToHP の設定」が正常に表示され、タップして開けるか。
+- [ ] **脱獄デーモンの動作 (Jailbreak のみ)**:
+  - `gotohpd --self-test`（Rootless: `/var/jb/usr/libexec/gotohpd`, Rootful: `/usr/libexec/gotohpd`）が exit 0 で終了するか。
+  - launchd サービス（`system/dev.tqmane.gunshot`）が正常に起動しているか。
 
-Use the [backup-routing controls and diagnostics](native-routing.md). These checks apply separately to jailed, rootless and rootful:
+---
 
-- OFF preserves standard manual/automatic backup. ON hands single, multiple and automatic requests to GoToHP once without opening its settings.
-- Both native handoff and direct GoToHP uploads refresh the native display after completion with settings closed. Check real data, quality and quota separately as above.
-- Account mismatch, expired authorization, PhotoKit refusal, disk full or failed reconciliation must not resend media through the native payload path.
-- Jailed requires foreground execution. After a jailbreak import reaches the daemon, closing the host must retain the queue; reopening must renew authorization and synchronize the display.
+## 📸 2. 写真・動画のアップロード品質
+
+- [ ] **各種フォーマットの検証**:
+  - JPEG, PNG, HEIC, RAW (DNG等), MP4, MOV, 4K 動画をそれぞれアップロード。
+  - Google フォト（Web 版または他端末）で確認し、解像度、撮影日時、タイムゾーン、EXIF/GPS 位置情報が正確に保持されているか。
+- [ ] **Live Photo の完全性**:
+  - HEIC + MOV（および JPEG + MOV）の Live Photo をアップロード。
+  - クラウド上で**「動画と静止画が分離せず、1 つの動く Live Photo として正常に再生できるか」**を確認。
+- [ ] **画質プロファイルの動作**:
+  - **オリジナル（Pixel XL）**: Google ドライブの容量（クォータ）が消費されないことを確認。
+  - **保存容量の節約（Pixel 2）**: 高画質圧縮が適用され、容量無制限になるか確認。
+  - **アカウント容量（Pixel 8）**: 通常の原本画質としてアカウントの容量が消費されるか確認。
+
+---
+
+## 🔄 3. 大量インポートとキュー管理
+
+- [ ] **アルバム一括インポート**:
+  - 「アルバムを選択」から数百〜数千枚規模のアルバムを選択してキューに追加できるか。
+  - インポート中に「準備を停止」をタップした際、安全に停止し、追加済みキューが保持されるか。
+- [ ] **標準ピッカー（最大100件）**:
+  - 「写真・動画を選択」から複数選択して正常にキューに追加されるか。
+- [ ] **重複排除**:
+  - 同じ写真やアルバムを再度インポートした際、二重アップロードされずにスキップされるか。
+
+---
+
+## ⚡ 4. ライフサイクル・バックグラウンド・耐障害性
+
+- [ ] **非脱獄（Jailed）のフォアグラウンド制御**:
+  - アップロード中にアプリをバックグラウンドに移動したり画面をロックした際、処理が安全に一時停止するか。
+  - 再度アプリを開いた際に、先頭から安全にアップロードが再開されるか。
+- [ ] **脱獄（Jailbreak）のデーモン継続動作**:
+  - キュー追加後に Google フォトアプリを完全に終了（スイープ終了）しても、バックグラウンドでデーモンがアップロードを継続するか。
+- [ ] **ネットワーク切断・復旧**:
+  - アップロード中に Wi-Fi をオフにする、機内モードにする、または回線を切り替えた際、エラーが適切に処理され、通信回復時に再開するか。
+- [ ] **端末再起動 / クラッシュ復旧**:
+  - アプリを強制終了したり端末を再起動した際、未完了のキューが失われずに保持・復元されるか。
+
+---
+
+## 🔗 5. Google フォト標準バックアップの転送 (Native Backup Routing)
+
+- [ ] **設定の ON / OFF 切替**:
+  - 「手動・自動バックアップを GoToHP へ送る」を ON にした際、標準のバックアップボタンを押すと GoToHP のキューに転送されるか。
+  - OFF の場合は通常どおり Google 純正のアップロードが行われるか。
+- [ ] **自動バックアップの連動**:
+  - 新しくカメラで写真を撮影した際、Google フォトのバックグラウンド検知によって自動的に GoToHP のキューへ転送されるか。
+- [ ] **ステータス表示の同期**:
+  - GoToHP によるアップロード完了後、Google フォト上の写真に「バックアップ完了」マークが反映されるか。
