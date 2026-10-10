@@ -68,6 +68,10 @@ func validateState(s State) error {
 			names[r.Name] = true
 			total += r.Size
 		}
+		if len(j.MediaKeys) != 0 && (len(j.MediaKeys) != 2 || len(j.Resources) != 2 ||
+			j.MediaKeys[0] == "" || j.MediaKeys[1] == "") {
+			return errors.New("invalid paired media keys")
+		}
 		if j.Total != total {
 			return errors.New("invalid persisted resource sizes")
 		}

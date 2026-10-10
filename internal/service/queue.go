@@ -66,7 +66,12 @@ func (e *Engine) execute(ctx context.Context, snapshot Job, paths []string) {
 		if p.State == "uploading" || p.State == "committing" || p.State == "preparing" {
 			j.State = p.State
 		}
-		j.Uploaded = p.Uploaded
+		if len(p.MediaKeys) == 2 && p.MediaKeys[0] != "" && p.MediaKeys[1] != "" {
+			j.MediaKeys = append([]string(nil), p.MediaKeys...)
+		}
+		if len(p.MediaKeys) == 0 {
+			j.Uploaded = p.Uploaded
+		}
 		if p.Total > 0 {
 			j.Total = p.Total
 		}

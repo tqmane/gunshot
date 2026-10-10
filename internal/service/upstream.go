@@ -89,6 +89,9 @@ type reporter struct {
 	uploaded int64
 }
 
+func (r *reporter) GunshotRAWPairMediaKeys(cover, raw string) {
+	r.callback(Progress{State: "committing", MediaKeys: []string{cover, raw}})
+}
 func (r *reporter) ThreadStatus(s backend.ThreadStatus) {
 	phase := "preparing"
 	switch s.Status {

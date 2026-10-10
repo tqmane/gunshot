@@ -318,3 +318,56 @@ func TestOriginalDoesNotReuseLegacyUnverifiedCompletion(t *testing.T) {
 		t.Fatal("current original completion was not deduplicated")
 	}
 }
+
+func TestRAWPairMediaKeysOnlyAfterFullCompletion(t *testing.T) {
+	makePairJob := func(t *testing.T, e *Engine) *Job {
+		t.Helper()
+		parts := []Resource{{Name: "IMG.JPG", Size: 3}, {Name: "IMG.DNG", Size: 3}}
+		v, err := e.begin(Request{Account: "a@example.com", Quality: "original", Resources: parts}, "photos")
+		if err != nil {
+			t.Fatal(err)
+		}
+		j := e.find(v.(map[string]any)["id"].(string))
+		for i := range parts {
+			if err := e.appendChunk(j, Request{Index: i, Offset: 0, Data: []byte("abc")}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if _, err := e.seal(j); err != nil {
+			t.Fatal(err)
+		}
+		return j
+	}
+	e := newEngine(t, func(_ context.Context, paths []string, _ string, _ string, cb func(Progress)) (string, error) {
+		if len(paths) != 2 || filepath.Ext(paths[0]) != ".JPG" || filepath.Ext(paths[1]) != ".DNG" {
+			t.Fatal("RAW pair files lost from durable queue")
+		}
+		cb(Progress{State: "committing"})
+		cb(Progress{State: "committing", MediaKeys: []string{"cover-key", "raw-key"}})
+		return "cover-key", nil
+	})
+	j := makePairJob(t, e)
+	e.online, e.wifi = true, true
+	e.Tick()
+	waitIdle(t, e)
+	if j.State != "completed" || j.MediaKey != "cover-key" || len(j.MediaKeys) != 2 ||
+		j.MediaKeys[0] != "cover-key" || j.MediaKeys[1] != "raw-key" {
+		t.Fatalf("lost confirmed RAW+cover media keys: %+v", j)
+	}
+	reopened, err := Open(e.root, nil)
+	if err != nil || len(reopened.find(j.ID).MediaKeys) != 2 {
+		t.Fatalf("paired keys did not survive restart: %v", err)
+	}
+	failing := newEngine(t, func(_ context.Context, _ []string, _ string, _ string, cb func(Progress)) (string, error) {
+		cb(Progress{State: "committing"})
+		return "", errors.New("raw commit rejected after cover succeeded")
+	})
+	partial := makePairJob(t, failing)
+	failing.online, failing.wifi = true, true
+	failing.Tick()
+	waitIdle(t, failing)
+	if partial.State != "failed" || partial.Error != "commit_outcome_unknown" ||
+		len(partial.MediaKeys) != 0 || partial.MediaKey != "" {
+		t.Fatalf("partial RAW upload reported confirmed: %+v", partial)
+	}
+}

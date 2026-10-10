@@ -1,17 +1,73 @@
 #import "../Shared/GSLocalization.h"
 #import "GSExporter.h"
 #import "../Shared/IPCProtocol.h"
+
+// Prefer the JPEG component of a single RAW+JPEG PhotoKit asset. RAW-only
+// assets must still preserve their original bytes.
+static BOOL GSResourceIsRAW(PHAssetResource *resource) {
+    if (!resource)
+        return NO;
+    NSString *uti = resource.uniformTypeIdentifier.lowercaseString;
+    NSString *extension = resource.originalFilename.pathExtension.lowercaseString;
+    if ([uti isEqualToString:@"com.adobe.raw-image"] ||
+        [uti isEqualToString:@"public.camera-raw-image"] || [uti hasSuffix:@"-raw-image"])
+        return YES;
+    if (!extension.length)
+        return NO;
+    NSArray *cameraRAW = @[ @"dng", @"arw", @"cr2", @"cr3", @"nef", @"nrw" ];
+    NSArray *otherRAW = @[ @"orf", @"pef", @"raf", @"raw", @"rw2", @"srw" ];
+    return [cameraRAW containsObject:extension] || [otherRAW containsObject:extension];
+}
+static BOOL GSResourceIsJPEG(PHAssetResource *resource) {
+    if (!resource)
+        return NO;
+    NSString *uti = resource.uniformTypeIdentifier.lowercaseString;
+    NSString *extension = resource.originalFilename.pathExtension.lowercaseString;
+    return [uti isEqualToString:@"public.jpeg"] ||
+           (extension.length && [@[ @"jpg", @"jpeg", @"jpe" ] containsObject:extension]);
+}
+static BOOL GSResourceIsRenderedImage(PHAssetResource *resource) {
+    if (GSResourceIsJPEG(resource))
+        return YES;
+    NSString *uti = resource.uniformTypeIdentifier.lowercaseString;
+    NSString *extension = resource.originalFilename.pathExtension.lowercaseString;
+    return [uti isEqualToString:@"public.heic"] || [uti isEqualToString:@"public.heif"] ||
+           [@[ @"heic", @"heif" ] containsObject:extension];
+}
 static NSArray<NSURL *> *GSWriteOriginalResources(PHAsset *asset, NSURL *directory,
                                                   NSError **error) {
     NSArray *resources = [PHAssetResource assetResourcesForAsset:asset];
     NSMutableArray *chosen = [NSMutableArray array];
     PHAssetResourceType type = asset.mediaType == PHAssetMediaTypeVideo ? PHAssetResourceTypeVideo
                                                                         : PHAssetResourceTypePhoto;
+    PHAssetResource *primary = nil;
     for (PHAssetResource *r in resources)
         if (r.type == type) {
-            [chosen addObject:r];
+            primary = r;
             break;
         }
+    // One PHAsset can contain both the rendered JPEG/HEIC and the RAW original.
+    // Preserve both resources, ordered cover-first, regardless of which resource
+    // PhotoKit exposes as the primary photo. Do not pair unrelated PHAssets.
+    PHAssetResource *cover = nil, *raw = nil;
+    if (asset.mediaType == PHAssetMediaTypeImage && primary) {
+        if (GSResourceIsRenderedImage(primary))
+            cover = primary;
+        else if (GSResourceIsRAW(primary))
+            raw = primary;
+        for (PHAssetResource *r in resources)
+            if (r.type == PHAssetResourceTypeAlternatePhoto) {
+                if (!cover && GSResourceIsRenderedImage(r))
+                    cover = r;
+                if (!raw && GSResourceIsRAW(r))
+                    raw = r;
+            }
+    }
+    if (cover && raw) {
+        [chosen addObject:cover];
+        [chosen addObject:raw];
+    } else if (primary)
+        [chosen addObject:primary];
     if (asset.mediaSubtypes & PHAssetMediaSubtypePhotoLive)
         for (PHAssetResource *r in resources)
             if (r.type == PHAssetResourceTypePairedVideo) {
