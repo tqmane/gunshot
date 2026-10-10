@@ -46,6 +46,7 @@ type Job struct {
 	Total           int64      `json:"total"`
 	Error           string     `json:"error,omitempty"`
 	MediaKey        string     `json:"mediaKey,omitempty"`
+	MediaKeys       []string   `json:"mediaKeys,omitempty"` // Confirmed cover + RAW keys; grouping unverified.
 	CancelRequested bool       `json:"cancelRequested,omitempty"`
 	Owner           string     `json:"owner"`
 }
@@ -76,6 +77,7 @@ type Request struct {
 type Progress struct {
 	State           string
 	Uploaded, Total int64
+	MediaKeys       []string
 }
 type Runner func(context.Context, []string, string, string, func(Progress)) (string, error)
 
