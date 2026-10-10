@@ -201,10 +201,10 @@ static void CheckRAWJPEGExportCase(NSString *fixture) {
             PHAsset *asset = [PHAsset new];
             asset.localIdentifier = parts[0];
             asset.mediaType = PHAssetMediaTypeImage;
-            NSURL *directory = [NSURL
-                fileURLWithPath:[NSTemporaryDirectory()
-                                    stringByAppendingPathComponent:NSUUID.UUID.UUIDString]
-                    isDirectory:YES];
+            NSString *root = NSTemporaryDirectory();
+            NSString *name = NSUUID.UUID.UUIDString;
+            NSString *path = [root stringByAppendingPathComponent:name];
+            NSURL *directory = [NSURL fileURLWithPath:path isDirectory:YES];
             NSError *error = nil;
             assert([NSFileManager.defaultManager createDirectoryAtURL:directory
                                           withIntermediateDirectories:YES
