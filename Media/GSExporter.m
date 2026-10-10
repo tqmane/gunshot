@@ -1,17 +1,52 @@
 #import "../Shared/GSLocalization.h"
 #import "GSExporter.h"
 #import "../Shared/IPCProtocol.h"
+
+// Prefer the JPEG component of a single RAW+JPEG PhotoKit asset. RAW-only
+// assets must still preserve their original bytes.
+static BOOL GSResourceIsRAW(PHAssetResource *resource) {
+    if (!resource)
+        return NO;
+    NSString *uti = resource.uniformTypeIdentifier.lowercaseString;
+    NSString *extension = resource.originalFilename.pathExtension.lowercaseString;
+    return [uti isEqualToString:@"com.adobe.raw-image"] ||
+           [uti isEqualToString:@"public.camera-raw-image"] || [uti hasSuffix:@"-raw-image"] ||
+           (extension.length && [@[
+               @"dng", @"arw", @"cr2", @"cr3", @"nef", @"nrw", @"orf", @"pef", @"raf",
+               @"raw", @"rw2", @"srw"
+           ] containsObject:extension]);
+}
+static BOOL GSResourceIsJPEG(PHAssetResource *resource) {
+    if (!resource)
+        return NO;
+    NSString *uti = resource.uniformTypeIdentifier.lowercaseString;
+    NSString *extension = resource.originalFilename.pathExtension.lowercaseString;
+    return [uti isEqualToString:@"public.jpeg"] ||
+           (extension.length && [@[ @"jpg", @"jpeg", @"jpe" ] containsObject:extension]);
+}
 static NSArray<NSURL *> *GSWriteOriginalResources(PHAsset *asset, NSURL *directory,
                                                   NSError **error) {
     NSArray *resources = [PHAssetResource assetResourcesForAsset:asset];
     NSMutableArray *chosen = [NSMutableArray array];
     PHAssetResourceType type = asset.mediaType == PHAssetMediaTypeVideo ? PHAssetResourceTypeVideo
                                                                         : PHAssetResourceTypePhoto;
+    PHAssetResource *primary = nil;
     for (PHAssetResource *r in resources)
         if (r.type == type) {
-            [chosen addObject:r];
+            primary = r;
             break;
         }
+    // Depending on the camera/import path, RAW can be the primary resource
+    // and its JPEG counterpart an alternatePhoto. Sending only the primary
+    // in that case uploads the RAW instead of the user's JPEG.
+    if (asset.mediaType == PHAssetMediaTypeImage && GSResourceIsRAW(primary))
+        for (PHAssetResource *r in resources)
+            if (r.type == PHAssetResourceTypeAlternatePhoto && GSResourceIsJPEG(r)) {
+                primary = r;
+                break;
+            }
+    if (primary)
+        [chosen addObject:primary];
     if (asset.mediaSubtypes & PHAssetMediaSubtypePhotoLive)
         for (PHAssetResource *r in resources)
             if (r.type == PHAssetResourceTypePairedVideo) {
