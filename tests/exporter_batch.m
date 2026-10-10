@@ -23,6 +23,13 @@ static NSData *OriginalBytes(BOOL movie) {
     memcpy(p + 8, movie ? "qt  " : "heic", 4);
     return bytes;
 }
+static NSData *RAWBytes(void) {
+    NSMutableData *bytes = [NSMutableData dataWithLength:70013];
+    uint8_t *p = bytes.mutableBytes;
+    for (NSUInteger i = 0; i < bytes.length; i++)
+        p[i] = (uint8_t)(i * 13 + 11);
+    return bytes;
+}
 @implementation PHAsset
 + (PHFetchResult *)fetchAssetsWithLocalIdentifiers:(NSArray *)ids options:(id)options {
     assert(NO);
@@ -111,9 +118,11 @@ static PHAssetResource *FixtureResource(PHAssetResourceType type, NSString *name
     assert([url.lastPathComponent isEqual:resource.originalFilename]);
     Written++;
     NSError *error = nil;
-    [OriginalBytes(resource.type == PHAssetResourceTypePairedVideo) writeToURL:url
-                                                                       options:0
-                                                                         error:&error];
+    BOOL raw = [resource.uniformTypeIdentifier isEqualToString:@"com.adobe.raw-image"] ||
+               [@[ @"dng", @"nef" ]
+                   containsObject:resource.originalFilename.pathExtension.lowercaseString];
+    NSData *bytes = raw ? RAWBytes() : OriginalBytes(resource.type == PHAssetResourceTypePairedVideo);
+    [bytes writeToURL:url options:0 error:&error];
     completion(error);
 }
 @end
@@ -183,15 +192,15 @@ static NSDictionary *Run(void) {
     return done;
 }
 
-static void CheckRAWJPEGSelection(void) {
+static void CheckRAWJPEGExport(void) {
     // Both entry points (native and bulk import) call this same exporter.
     NSArray<NSDictionary *> *cases = @[
-        @{@"id" : @"raw-primary", @"expected" : @"alternate.JPG"},
-        @{@"id" : @"jpeg-primary", @"expected" : @"primary.JPG"},
-        @{@"id" : @"raw-only", @"expected" : @"primary.DNG"},
-        @{@"id" : @"heic-primary", @"expected" : @"primary.HEIC"},
-        @{@"id" : @"raw-extension", @"expected" : @"alternate.jpeg"},
-        @{@"id" : @"raw-uti", @"expected" : @"alternate.bin"}
+        @{@"id" : @"raw-primary", @"expected" : @[ @"alternate.JPG", @"primary.DNG" ]},
+        @{@"id" : @"jpeg-primary", @"expected" : @[ @"primary.JPG", @"alt.DNG" ]},
+        @{@"id" : @"raw-only", @"expected" : @[ @"primary.DNG" ]},
+        @{@"id" : @"heic-primary", @"expected" : @[ @"primary.HEIC" ]},
+        @{@"id" : @"raw-extension", @"expected" : @[ @"alternate.jpeg", @"primary.NEF" ]},
+        @{@"id" : @"raw-uti", @"expected" : @[ @"alternate.bin", @"primary.bin" ]}
     ];
     dispatch_sync(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
         for (NSDictionary *fixture in cases) {
@@ -209,9 +218,16 @@ static void CheckRAWJPEGSelection(void) {
                                                                attributes:nil
                                                                     error:&error]);
                 NSArray<NSURL *> *files = GSExportAsset(asset, directory, &error);
-                assert(!error && files.count == 1);
-                assert([files[0].lastPathComponent isEqual:fixture[@"expected"]]);
-                assert([[NSData dataWithContentsOfURL:files[0]] isEqual:OriginalBytes(NO)]);
+                NSArray<NSString *> *expected = fixture[@"expected"];
+                assert(!error && files.count == expected.count);
+                for (NSUInteger i = 0; i < expected.count; i++) {
+                    assert([files[i].lastPathComponent isEqual:expected[i]]);
+                    BOOL raw = ([asset.localIdentifier isEqual:@"raw-uti"] && i == 1) ||
+                               [@[ @"dng", @"nef" ]
+                                   containsObject:files[i].pathExtension.lowercaseString];
+                    NSData *sourceBytes = raw ? RAWBytes() : OriginalBytes(NO);
+                    assert([[NSData dataWithContentsOfURL:files[i]] isEqual:sourceBytes]);
+                }
                 [NSFileManager.defaultManager removeItemAtURL:directory error:nil];
             }
         }
@@ -222,7 +238,7 @@ int main(void) {
         NSDictionary *result = Run();
         assert(Queued == 60 && Written == 61 && [result[@"queued"] intValue] == 60 &&
                [result[@"failed"] intValue] == 0);
-        CheckRAWJPEGSelection();
+        CheckRAWJPEGExport();
         IncludeUnreadable = YES;
         result = Run();
         assert(Queued == 119 && [result[@"queued"] intValue] == 59 &&
@@ -254,6 +270,6 @@ int main(void) {
                0);
         assert(atomic_load(&PeakExports) == 1);
         NSLog(@"PASS 60 HEIC/HEIF originals, Live Photo resources, exact IPC bytes/timestamp, "
-              @"unreadable original isolation, RAW+JPEG preference and bounded native exports");
+              @"unreadable original isolation, RAW+JPEG paired originals and bounded native exports");
     }
 }
