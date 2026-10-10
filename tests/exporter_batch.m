@@ -32,8 +32,7 @@ static NSData *OriginalBytes(BOOL movie) {
 @interface PHAssetResource ()
 @property (nonatomic) BOOL unreadable;
 @end
-static PHAssetResource *FixtureResource(PHAssetResourceType type, NSString *name,
-                                        NSString *uti) {
+static PHAssetResource *FixtureResource(PHAssetResourceType type, NSString *name, NSString *uti) {
     PHAssetResource *resource = [PHAssetResource new];
     resource.type = type;
     resource.originalFilename = name;
@@ -50,10 +49,10 @@ static PHAssetResource *FixtureResource(PHAssetResourceType type, NSString *name
     if ([asset.localIdentifier isEqual:@"jpeg-primary"])
         return @[
             FixtureResource(PHAssetResourceTypePhoto, @"primary.JPG", @"public.jpeg"),
-            FixtureResource(PHAssetResourceTypeAlternatePhoto, @"alternate.DNG", @"com.adobe.raw-image")
+            FixtureResource(PHAssetResourceTypeAlternatePhoto, @"alt.DNG", @"com.adobe.raw-image")
         ];
     if ([asset.localIdentifier isEqual:@"raw-only"])
-        return @[ FixtureResource(PHAssetResourceTypePhoto, @"primary.DNG", @"com.adobe.raw-image") ];
+        return @[ FixtureResource(PHAssetResourceTypePhoto, @"primary.DNG", @"public.data") ];
     if ([asset.localIdentifier isEqual:@"heic-primary"])
         return @[
             FixtureResource(PHAssetResourceTypePhoto, @"primary.HEIC", @"public.heic"),
