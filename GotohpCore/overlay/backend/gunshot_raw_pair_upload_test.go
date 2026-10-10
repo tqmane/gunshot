@@ -33,10 +33,10 @@ func (r *gunshotRAWTestReporter) ThreadStatus(s ThreadStatus) {
 
 func TestGunshotRAWPairClassification(t *testing.T) {
 	for _, tc := range []struct {
-		files     []string
-		cover     string
-		raw       string
-		matched   bool
+		files	[]string
+		cover	string
+		raw	string
+		matched	bool
 	}{
 		{[]string{"a.DNG", "a.JPG"}, "a.JPG", "a.DNG", true},
 		{[]string{"a.jpeg", "a.cr3"}, "a.jpeg", "a.cr3", true},
@@ -58,11 +58,11 @@ func TestGunshotRAWPairTwoConfirmedCommits(t *testing.T) {
 	GunshotSetNativeBearerProvider(func(string) (string, error) { return "fixture-token", nil })
 	t.Cleanup(func() { GunshotSetNativeBearerProvider(nil) })
 	for _, tc := range []struct {
-		name      string
-		rawFirst  bool
-		fail      string
-		saver     bool
-		quota     bool
+		name	string
+		rawFirst	bool
+		fail	string
+		saver	bool
+		quota	bool
 	}{
 		{"original", false, "", false, false},
 		{"raw-first", true, "", false, false},
