@@ -219,10 +219,10 @@ static void CheckRAWJPEGSelection(void) {
 }
 int main(void) {
     @autoreleasepool {
-        CheckRAWJPEGSelection();
         NSDictionary *result = Run();
         assert(Queued == 60 && Written == 61 && [result[@"queued"] intValue] == 60 &&
                [result[@"failed"] intValue] == 0);
+        CheckRAWJPEGSelection();
         IncludeUnreadable = YES;
         result = Run();
         assert(Queued == 119 && [result[@"queued"] intValue] == 59 &&
