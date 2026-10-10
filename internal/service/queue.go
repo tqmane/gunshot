@@ -69,7 +69,7 @@ func (e *Engine) execute(ctx context.Context, snapshot Job, paths []string) {
 		if len(p.MediaKeys) == 2 && p.MediaKeys[0] != "" && p.MediaKeys[1] != "" {
 			j.MediaKeys = append([]string(nil), p.MediaKeys...)
 		}
-		if p.Uploaded > 0 {
+		if len(p.MediaKeys) == 0 {
 			j.Uploaded = p.Uploaded
 		}
 		if p.Total > 0 {
