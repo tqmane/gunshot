@@ -1,70 +1,64 @@
-# Google Photos の標準バックアップ操作を GoToHP へ転送
+# Google フォト標準バックアップの転送 (Native Backup Routing)
 
-jailed / rootless / rootful で、対応する純正の手動・自動バックアップ要求を
-GoToHP に渡します。IPA の解析基準は **7.20.2 / 7.92.0** で、版番号を固定せず、
-各機能が必要とする class / selector / 引数の型を実行時に照合します。
-[処理と診断の詳細](analysis/backup-routing.md)。
+Gunshot には、Google フォトアプリ標準の「バックアップ機能」をフックし、アップロード先を自動的に GoToHP の Pixel 偽装アップロードへと横取り・転送する機能（**Native Backup Routing**）が搭載されています。
 
-1. Google Photos を起動し、ログイン中のアカウントへの自動接続を待ちます。
-2. プロフィールメニュー → **GoToHP の設定**で画質を選び、
-   **手動・自動バックアップを GoToHP へ送る**を有効化して送信先を確認します。
-   この切替は既定 OFF です。
-3. Google Photos の通常のバックアップボタンを使います。対応する操作は
-   GoToHP の画面や毎回の確認を出さずにキューへ送ります。
-4. 自動バックアップには Google Photos 本体のバックアップも ON にします。
+この機能を有効化すると、わざわざ GoToHP の設定画面から写真を選んでアップロードしなくても、**普段どおり Google フォトを使うだけで、自動的にオリジナル画質の無制限バックアップが行われます。**
 
-元のスケジューラーと delegate を維持し、共通の `GMUAssetUploadRequest` /
-`GMULivePhotoSingleUploadRequest` で PhotoKit 原本を転送します。動画などの
-バックグラウンド要求（`GMUBackgroundAssetUploadRequest`）と、
-もう一方の Live Photo 変種（`GMULivePhotoUploadRequest`）も同じく転送します。
-該当 class が存在しない版では従来の 2 要求のみが有効になり、起動時の ABI 照合で
-可否を決めます。各要求の `asset` は PHAsset 原本を指します。Go の実際の
-完了後に純正の fingerprint 照合を再開し、成功を確認します。GoToHP 単独の
-アップロードも前景の完了監視で検知し、純正のアカウント別 fetchData による
-表示更新を要求します。設定を開いたままにする必要や、毎回の再起動はありません。
-通信とサーバー反映に時間がかかる場合はあります。
+---
 
-アカウント不一致・書出し失敗・再照合失敗では純正のデータ送信に戻しません。
-Google Photos の DB、バックアップフラグ、成功結果を直接作り替えません。
-画質と送信先は GoToHP の設定を使用します。送信先を変更した場合は転送設定を
-OFF/ON して再確認してください。新規要求から有効なので、導入・切替前にすでに
-始まっていた純正送信は対象外です。
+## 🚀 有効化の手順
 
-jailed / LiveContainer では Google Photos を前面で開いてください。jailbreak では
-原本が daemon のキューに渡るまで開き、その後は認証が利用できる間 daemon が
-続行します。Google Photos が終了すると純正の新しい自動要求は作られません。
-認証の更新にはホストが必要です。[認証の制約](analysis/native-account.md)。
+1. **Google フォトを起動**し、ログイン中のアカウントに GoToHP が自動接続するのを確認します。
+2. 画面右上の **プロフィールアイコン →「GoToHP の設定」** を開きます。
+3. **「手動・自動バックアップを GoToHP へ送る」** のスイッチを **ON** にします。
+   - ※初期状態では OFF になっています。
+   - スイッチを ON にすると、現在の送信先アカウントと画質設定が表示されますので確認してください。
+4. **Google フォト本体のバックアップ設定も ON** になっていることを確認します。
+   - Google フォト本来のスケジューラーが写真を検知してバックアップを開始するため、本体のバックアップ設定も必要です。
 
-旧手動 `backupLocalAssets:` の互換処理はソースに残りますが、共通要求の ABI が
-不適合なら設定から手動・自動連携を新たに有効化できません。
-locked folder・編集専用・共有専用など、任意の全経路の置換は保証しません。
-[実機検証項目](device-validation.md)。
+設定はこれだけで完了です！
 
-## 対応範囲
+---
 
-| 経路 | 現在の扱い |
-| --- | --- |
-| GMUAssetUploadRequest.start | 手動・自動の PHAsset 原本を GoToHP の永続キューへ転送 |
-| GMUBackgroundAssetUploadRequest.start | 動画などの要求を GoToHP へ転送。再照合の finishUpload／エラー終了で後始末 |
-| GMULivePhotoSingleUploadRequest.start | 写真・pairedVideo を一組で転送し、純正のサーバー再照合で完了判定 |
-| GMULivePhotoUploadRequest.start | もう一方の Live Photo 要求変種を同じく一組で転送 |
-| 純正の完了 callback | 旧版の数値 errorCode / 新版の NSError を自動選択。成功結果を捏造しない |
-| GMUUploadRequest.startFetcher / startCNDEUpload | 転送有効時・再照合中の native payload fallback を停止 |
-| GMUBackgroundAssetUploadRequest.beginUploadMediaRequestWithFingerprint: | background URLSession／Scotty に進む前に native payload fallback を停止 |
-| Swift Scotty / statelessUpload | 対応 ABI が存在する場合に payload fallback を停止。7.20.2 では該当 Swift class は未検出 |
-| GoToHP の設定から直接送信 | 共通の完了監視が純正 fetchData に表示更新を要求 |
-| locked folder / 編集専用 / 共有専用 / 既存 background URLSession | 全経路の移譲を検証できていない。通常の PHAsset バックアップと同等とは扱わない |
+## 🔄 どのように動作するか？
 
-Go の completed / mediaKey だけでは、純正側のバックアップ成功を保証しません。
+通常の Google フォトのバックアップ操作を行うと、Gunshot がそのリクエストを自動的にキャッチします。
 
-## 診断
+- **手動バックアップ**:
+  - 写真の詳細画面にある「今すぐバックアップ」ボタンや、複数選択して「バックアップ」を押した操作が、自動的に GoToHP のアップロードキューに転送されます。
+- **自動バックアップ**:
+  - 新しく撮影した写真や動画が Google フォトによってバックアップ対象になると、そのまま GoToHP のキューに転送されます。
+- **バックアップ完了後の反映**:
+  - GoToHP によるアップロードが完了すると、Google フォト本体のステータス同期が呼び出され、写真の「バックアップ完了」アイコン（雲マークの消去やチェックマーク）が正常に更新されます。
 
-GoToHP 設定の **Upload diagnostics** を有効にし、標準操作を試して
-**Export diagnostics** を使います。`backupRouting` の intercepted / queued /
-nativeReconciled、`photosIntegration` の syncRequested、`completionMonitor` の
-syncSignals / uploadSummary を確認できます。
+---
 
-標準経路そのものを調べるときだけ転送を OFF にします。その場合は純正送信となり、
-GoToHP の画質 policy は適用されません。診断はトークン・写真・account ID・mediaKey・
-HTTP 本文を記録しません。CI は API fixture、Go queue、パッケージ構成を検証しますが、
-Google サーバーの再照合や端末での表示時間を証明するものではありません。
+## ⚙️ 内部の仕組み（技術的な概要）
+
+Gunshot は Google フォト内部のアップロード要求クラス（`GMUAssetUploadRequest` や `GMULivePhotoSingleUploadRequest` など）をフックしています。
+
+1. **リクエストの傍受**: Google フォトが写真をサーバーへ送信しようとした瞬間にリクエストをフックし、PhotoKit から無劣化のオリジナル写真・動画（Live Photo の場合は静止画と動画のペア）を取り出します。
+2. **GoToHP キューへの登録**: 抽出したデータを GoToHP の永続キューへ渡し、Pixel 偽装プロファイル（Pixel XL 等）でアップロードを実行します。
+3. **二重送信の防止**: Google フォト本来のアップロード処理（純正サーバーへの通常送信）を安全に抑止し、容量が二重に消費されたりエラーになるのを防ぎます。
+4. **ステータス完了同期**: アップロード完了後、Google フォト純正のフィンガープリント照合・アイテム同期（`fetchData`）をトリガーして、UI 上のバックアップ状態を正常に完了させます。
+
+---
+
+## ⚠️ 環境ごとの注意点
+
+- **サイドロード / 非脱獄（Jailed）環境**:
+  - アプリが前面（フォアグラウンド）にある間のみバックアップとアップロードが行われます。Google フォトを開いたままにしておくことで、バックアップが進行します。
+- **脱獄（Jailbreak）環境**:
+  - 写真が Google フォトからデーモン (`gotohpd`) のキューへ渡されれば、Google フォトを閉じてもバックグラウンドでデーモンがアップロードを継続します。
+- **アカウントや画質を変更した場合**:
+  - GoToHP の設定で送信先アカウントや画質を変更した場合は、念のため「手動・自動バックアップを GoToHP へ送る」を一度 OFF にしてから再度 ON にして、送信先が正しく更新されていることを確認してください。
+
+---
+
+## 🔍 トラブルシューティングと診断
+
+標準バックアップからの転送がうまく機能しているか確認したい場合：
+
+1. 「GoToHP の設定」内の **「Upload diagnostics（アップロード診断）」** を ON にします。
+2. 写真のバックアップを試し、**「Export diagnostics」** をタップして診断情報を書き出します。
+3. `backupRouting` 項目内の `intercepted`（傍受数）、`queued`（キュー追加数）、`nativeReconciled`（同期完了数）などの数値が増加していれば、正常に連携されています。

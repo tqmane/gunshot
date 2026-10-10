@@ -1,0 +1,148 @@
+{
+  "scope": "Selected direct instance-method metadata only; not an inheritance, call-path or runtime audit.",
+  "versions": {
+    "7.20.2": [
+      {
+        "image": "GooglePhotos",
+        "sha256": "869b97bdb7a9f5f693715422ad4549f62ac4166de35f7f7d5e0908d9d3aa20b2",
+        "minimumOSFromBuildCommand": "16.1.0",
+        "selectedMethods": [
+          {
+            "class": "PHSOneUpInfoPanelDetailsViewController",
+            "selector": "modelForBackedupStatus",
+            "encoding": "@16@0:8"
+          }
+        ]
+      },
+      {
+        "image": "ModuleFramework",
+        "sha256": "6153ecaadcf00699af05509b9c48f1bb61407c4fcde513e2fe26551c83c21f5e",
+        "minimumOSFromBuildCommand": "16.1.0",
+        "selectedMethods": [
+          {
+            "class": "PHSAccountManagerImpl",
+            "selector": "ssoService",
+            "encoding": "@16@0:8"
+          },
+          {
+            "class": "GMUAssetUploadRequest",
+            "selector": "didCompleteWithSuccess:resultantMediaItem:errorCode:",
+            "encoding": "v36@0:8B16@20q28"
+          },
+          {
+            "class": "GMULivePhotoSingleUploadRequest",
+            "selector": "didCompleteWithError:resultantMediaItem:",
+            "encoding": "v32@0:8@16@24"
+          },
+          {
+            "class": "PHSUserItemsSynchronizer",
+            "selector": "fetchData",
+            "encoding": "v16@0:8"
+          }
+        ]
+      }
+    ],
+    "7.92.0": [
+      {
+        "image": "GooglePhotos",
+        "sha256": "0395330b2170256ec4ca240afad8672d0e0ab19e03acc10e74e04bce8b73858d",
+        "minimumOSFromBuildCommand": "18.0.0",
+        "selectedMethods": [
+          {
+            "class": "PHSOneUpInfoPanelDetailsViewController",
+            "selector": "modelForBackedupStatus",
+            "encoding": "@16@0:8"
+          },
+          {
+            "class": "PHSOneUpInfoPanelDetailsViewController",
+            "selector": "getBackupStatusModelData",
+            "encoding": "@16@0:8"
+          }
+        ]
+      },
+      {
+        "image": "GooglePhotos_GeneratedFramework",
+        "sha256": "be2629c366b134ae63a80023a77165b30866e890a398a17eb423af80526983d6",
+        "minimumOSFromBuildCommand": "18.0.0",
+        "selectedMethods": [
+          {
+            "class": "PHSAccountManagerImpl",
+            "selector": "ssoService",
+            "encoding": "@16@0:8"
+          },
+          {
+            "class": "PHSAccountManagerImpl",
+            "selector": "photosSSOService",
+            "encoding": "@16@0:8"
+          },
+          {
+            "class": "GMUAssetUploadRequest",
+            "selector": "didCompleteWithSuccess:resultantMediaItem:error:",
+            "encoding": "v36@0:8B16@20@28"
+          },
+          {
+            "class": "GMULivePhotoSingleUploadRequest",
+            "selector": "didCompleteWithError:resultantMediaItem:",
+            "encoding": "v32@0:8@16@24"
+          },
+          {
+            "class": "PHSUserItemsSynchronizer",
+            "selector": "fetchData",
+            "encoding": "v16@0:8"
+          }
+        ]
+      }
+    ],
+    "7.96.0": [
+      {
+        "image": "GooglePhotos",
+        "sha256": "8491b7186074ecd8cb048f306171a89cfd5707bbfee3c4e5007b06ab66d334ef",
+        "minimumOSFromBuildCommand": "18.0.0",
+        "selectedMethods": [
+          {
+            "class": "PHSOneUpInfoPanelDetailsViewController",
+            "selector": "modelForBackedupStatus",
+            "encoding": "@16@0:8"
+          },
+          {
+            "class": "PHSOneUpInfoPanelDetailsViewController",
+            "selector": "getBackupStatusModelData",
+            "encoding": "@16@0:8"
+          }
+        ]
+      },
+      {
+        "image": "GooglePhotos_GeneratedFramework",
+        "sha256": "c882f5bc1af3d1b839bdf5f897c7987a1ba381e471571348d736b3101bb14b23",
+        "minimumOSFromBuildCommand": "18.0.0",
+        "selectedMethods": [
+          {
+            "class": "PHSAccountManagerImpl",
+            "selector": "ssoService",
+            "encoding": "@16@0:8"
+          },
+          {
+            "class": "PHSAccountManagerImpl",
+            "selector": "photosSSOService",
+            "encoding": "@16@0:8"
+          },
+          {
+            "class": "GMUAssetUploadRequest",
+            "selector": "didCompleteWithSuccess:resultantMediaItem:error:",
+            "encoding": "v36@0:8B16@20@28"
+          },
+          {
+            "class": "GMULivePhotoSingleUploadRequest",
+            "selector": "didCompleteWithError:resultantMediaItem:",
+            "encoding": "v32@0:8@16@24"
+          },
+          {
+            "class": "PHSUserItemsSynchronizer",
+            "selector": "fetchData",
+            "encoding": "v16@0:8"
+          }
+        ]
+      }
+    ]
+  }
+}

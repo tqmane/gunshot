@@ -1,5 +1,7 @@
 # GoToHP 設定のタップと表示経路
 
+> 解析・診断の記録です。現在の手順は[ドキュメント索引](../README.md)を参照してください。日付・版ごとの観測や過去の実装を含みます。
+
 Google Photos 7.92.0 で「GoToHP の設定」の行は表示されるが、タップしても開かない実機報告への修正。
 
 ## 解析した経路
@@ -31,4 +33,4 @@ Google Photos 7.92.0 で「GoToHP の設定」の行は表示されるが、タ�
 
 `tests/account_menu.m` は UIKit の最小 shim と実際の hook 実装を使い、対応バージョンの判定、行数、元の項目の保持、dismiss 前の GoToHP タップ、delegate fallback、二重インストール、data source 未解決を検証する。実際の iPhone の表示・アニメーション・タップは実機確認が必要。
 
-`tests/settings_ui.m` は実際の UIKit と GSPanel を iPhone シミュレーターで起動し、detached controller、既にモーダルがある root、連続タップ、nil の表示元、設定画面の描画を検証する。バックエンドはテスト用に固定し、Google 認証やアップロードは実行しない。ライト・ダーク・履歴画面の画像は CI の `settings-ui-smoke` artifact に保存する。
+当時の UIKit smoke テストでは、detached controller、既にモーダルがある root、連続タップ、nil の表示元、設定画面の描画を検証した。このテストと専用 CI ジョブは削除済み。現在の表示・アニメーション・タップの確認は[実機確認手順](../device-validation.md)を参照。

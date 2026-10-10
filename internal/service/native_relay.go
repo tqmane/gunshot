@@ -14,10 +14,10 @@ import (
 const nativeBearerRetention = 5 * time.Minute
 
 type nativeRelay struct {
-	mu sync.Mutex
+	mu        sync.Mutex
 	id, token string
-	until time.Time
-	now func() time.Time
+	until     time.Time
+	now       func() time.Time
 }
 
 func (r *nativeRelay) clear() {
@@ -39,7 +39,9 @@ func (r *nativeRelay) put(id, token string) error {
 func (r *nativeRelay) get(id string) (string, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if !r.now().Before(r.until) { r.id, r.token = "", "" }
+	if !r.now().Before(r.until) {
+		r.id, r.token = "", ""
+	}
 	if id == "" || r.id != id || r.token == "" {
 		return "", errors.New("open Google Photos to refresh authorization")
 	}
@@ -54,9 +56,15 @@ func (e *Engine) EnableNativeRelay() {
 }
 
 func (e *Engine) nativeAuthorization(email string) string {
-	if e.nativeRelay == nil { return "" }
+	if e.nativeRelay == nil {
+		return ""
+	}
 	id := backend.GunshotNativeAccountID(email)
-	if id == "" { return "" }
-	if _, err := e.nativeRelay.get(id); err != nil { return "waiting" }
+	if id == "" {
+		return ""
+	}
+	if _, err := e.nativeRelay.get(id); err != nil {
+		return "waiting"
+	}
 	return "ready"
 }

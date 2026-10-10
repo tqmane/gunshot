@@ -1,5 +1,7 @@
 # Native unlimited storage display (Google Photos iOS 7.92.0)
 
+> 解析・診断の記録です。現在の手順は[ドキュメント索引](../README.md)を参照してください。日付・版ごとの観測や過去の実装を含みます。
+
 GoToHP settings → Appearance → **Show unlimited storage** is enabled by default.
 The choice is stored in the host app's preferences (`GSShowUnlimitedStorage`). An
 absent key means on; an explicit false is preserved across launches. Reopen the
@@ -62,9 +64,9 @@ self-sizing row estimates even when all response values were unchanged.
 The settings fix compares snapshots/status before reloading, skips polls or
 completions during dragging/tracking/deceleration, and preserves the first
 visible row plus its pixel offset when a changed snapshot requires a reload.
-Repeated identical error messages also avoid reloading. The UIKit fixture waits
-through multiple real timer polls and then changes a response value, asserting
-that the switch remains visible and its position is preserved.
+Repeated identical error messages also avoid reloading. The former UIKit fixture checked multiple timer polls and a changed response
+value for row visibility and position. That simulator fixture has been removed;
+check settings scrolling and switch animations on device.
 
 Further binary analysis identifies a more direct display boundary:
 
@@ -151,7 +153,7 @@ both legacy classes absent (`bento-only`). It also checks real KVO subclasses,
 late resource availability, unchanged backing fields/callbacks/counters,
 secure archive round trips, exception-safe coder suppression, and native updates
 followed by on/off restoration. A separate invocation checks incompatible ABI
-rejection. The existing UIKit polling test and all package builds remain enabled.
+rejection. Package builds remain enabled; the UIKit polling test has been removed.
 
 These fixtures do not execute Google's proprietary SwiftUI view. On device,
 reopen the profile menu after toggling and check both title/layout and native

@@ -6,8 +6,8 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-kern_return_t GSDiscoverDaemon(mach_port_t *port,uint32_t timeoutMS,const char **stage);
-bool GSStartDiscoveryService(mach_port_t port,bool (*authorize)(audit_token_t));
+kern_return_t GSDiscoverDaemon(mach_port_t *port, uint32_t timeoutMS, const char **stage);
+bool GSStartDiscoveryService(mach_port_t port, bool (*authorize)(audit_token_t));
 #ifdef __cplusplus
 }
 #endif

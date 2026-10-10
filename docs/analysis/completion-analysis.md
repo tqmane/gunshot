@@ -1,5 +1,7 @@
 # Native upload 完了処理の解析
 
+> 解析・診断の記録です。現在の手順は[ドキュメント索引](../README.md)を参照してください。日付・版ごとの観測や過去の実装を含みます。
+
 対象は提供 7.92.0 generated framework の下記関数です。Objective-C metadata から IMP を求め、arm64 instruction と selector stub の参照を追跡しました。これは限定した関数の静的解析で、全 call graph や実行ログではありません。
 
 | 関数 | Static VM address | 追跡で確認した参照 |

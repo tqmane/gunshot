@@ -1,62 +1,91 @@
-# Implementation notes
+# アーキテクチャ・設計解説 (Architecture)
 
-## Upstream pin and call graph
+Gunshot (GoToHP for iOS) のシステム構成、各コンポーネントの責務、データフロー、および設計思想の解説です。
 
-Pinned commit: `0637c745dc590d74766b24eac80d689d2248e766` in [xob0t/gotohp](https://github.com/xob0t/gotohp/tree/0637c745dc590d74766b24eac80d689d2248e766).
+---
 
-Ordinary file: `GunshotUpload → ClassifyUploadWork → uploadWorkItem → uploadSingleFile → CalculateSHA1 → FindRemoteMediaByHash → GetUploadToken → UploadFileWithProgress → ParseScottyFinalizeToken → CommitUpload → commitSerialized → doCommitRequest`.
+## 🏛️ システム概要
 
-Live Photo: `ClassifyUploadWork` uses Apple image content identifier / QuickTime identifier and still-image-time metadata. One work item carries photo + video. `uploadLivePhotoWithCallback` uploads components, builds the linked create request, and commits one asset. Pairing failures are explicit; two arbitrary same-stem files are not silently treated as a Live Photo.
+Gunshot は、iOS の Google フォトアプリ（Objective-C / Swift）と、Google Pixel 偽装アップロードを行う Go コアエンジンを橋渡しするアーキテクチャを採用しています。
 
-Authentication: `AddGoogleAccountWithProxy → exchangeEmbeddedSetupToken → validateGooglePhotosCredential → upsertCredential`. Raw credential import validates required fields and Google authentication before upsert. Imported credentials are URL query strings containing Android ID, account email, token, client signature, scope, language, and optional token-binding material. Account summaries exclude those secrets.
+動作モードによって 2 種類の実行形態を持ちます：
 
-The projection excludes Wails files and desktop config migration tests; replaces configmanager with an iOS JSON store; reuses upstream Preferences definitions/setters only for upstream test compatibility. Two upstream persistence assertions are translated from YAML to JSON. Android ADB/executable discovery and modernc SQLite are absent. Native queue persistence does not need SQLite.
+```
+【脱獄環境 (Jailbreak)】
+[Google フォト (Tweak.xm / Native / UI)]
+       │ (Mach Message / XPC)
+       ▼
+[バックグラウンドデーモン gotohpd (Daemon/)]
+       │ (C/Go ブリッジ)
+       ▼
+[Go コアエンジン (internal/service/)] ──(HTTPS)──▶ Google フォト サーバー
 
-Small explicit adaptations, checked against the pinned source:
+【非脱獄環境 (Jailed / Sideload)】
+[Google フォト (Jailed/Hooks.m / Native / UI)]
+       │ (Direct In-Process Call)
+       ▼
+[組み込みサービス (Jailed/EmbeddedService.m)]
+       │ (C/Go ブリッジ)
+       ▼
+[Go コアエンジン (internal/service/)] ──(HTTPS)──▶ Google フォト サーバー
+```
 
-1. Initialize a nil TLSClientConfig before upstream dereferences it; never disable certificate validation, including proxy paths.
-2. Set a six-hour per-request ceiling for requests lacking upstream context.
-3. Fail closed on an ordinary remote duplicate-check error.
-4. Facade supplies the job cancellation context to all API transport requests and accepts exactly one classified work item. For two inputs that item must be a Live Photo.
+---
 
-The submodule is immutable during builds. Script string anchors intentionally fail when upstream moves relevant code. Go build tests detect API drift. A projection build does not automatically prove the new upstream still implements the intended API policy.
+## 📁 ディレクトリ構造とコンポーネントの責務
 
-## Transport and storage boundary
+| ディレクトリ | 主な役割 |
+| :--- | :--- |
+| `Tweak.xm` | 脱獄版のエントリーポイント。Logos によるフック定義とライフサイクル管理。 |
+| `Jailed/` | 非脱獄（サイドロード）版のエントリーポイント（`Hooks.m`）およびアプリ内組み込みサービスブリッジ（`EmbeddedService.m`）。 |
+| `UI/` | 設定パネル（`GSPanel`）、アルバムピッカー（`GSAlbumPicker`）、アカウントメニュー統合（`GSAccountMenu`）、外観オプション。 |
+| `Native/` | Google フォト内部機能との連携。アカウント検出・SSOトークン取得（`GSNativeAccount`）、標準バックアップ転送（`GSNativeRouting`）、完了監視・UI同期（`GSPhotosIntegration`）。 |
+| `Media/` | 写真・動画の取り出し。PhotoKit からのオリジナルバイナリ無劣化エクスポート（`GSExporter`）、アルバム一括処理（`GSBatchImport`）。 |
+| `Shared/` | 共通基盤。プロセス間通信プロトコル（`IPCProtocol`）、Mach/XPC通信（`GSMachTransport`）、多言語ローカライズ（`GSLocalization`）、ランタイムチェック。 |
+| `Daemon/` | 脱獄用デーモン（`gotohpd`）。Mach サービスの提供、クライアント認証（audit token 検証）、電源・通信状況の監視。 |
+| `internal/service/` | Go 言語によるアップロードキューエンジン。ジョブ永続化（`state.go`）、キュー管理（`queue.go`）、ライフサイクル復旧（`engine.go`）。 |
+| `GotohpCore/` | [xob0t/gotohp](https://github.com/xob0t/gotohp) のコアコード（upstream）と、iOS 向けに適用するオーバーレイ差分。 |
 
-Jailbreak clients use direct Mach lookup and, when needed, a restricted libSandy profile plus authenticated XPC discovery. `Shared/GSXPC.h` supplies C ABI declarations (not an implementation) for SDKs without XPC headers, with explicit object ownership. The macOS discovery fixtures exercise these declarations against libxpc.
+---
 
-Only Photos and Google Photos with the expected signing identifiers and executable locations are accepted, using the kernel Mach audit trailer. The signing identifier is derived from an audit-token-bound SecTask; the supplementary path check uses the token PID. PID recycling cannot substitute the signing identity. IPC fails closed if Security SPI is unavailable.
+## 🔄 データフローとアップロード処理
 
-Messages are simple Mach messages (no port/OOL descriptors), with a fixed maximum buffer and validated length. JSON has no filesystem path operation and cannot provide its own role. Only the audit-verified Google Photos process can mutate accounts and options over IPC for the in-app settings page. The internal settings role remains for the jailed adapter; the daemon never grants that role to a client. Approved Photos clients can begin/append/seal media jobs. Daemon-only conditions updates never arrive via a client-supplied role.
+### 1. メディアの抽出 (Media Export)
+- ユーザーが写真を選択、または Google フォトのバックアップが開始されると、`Media/GSExporter` が PhotoKit (`PHAssetResourceManager`) を通じてオリジナルファイルを一時ディレクトリに書き出します。
+- **Live Photo の場合**: 静止画（HEIC/JPEG）とペア動画（MOV）の両方のリソースを同時に取り出します。再エンコードやメタデータの欠落は発生しません。
 
-Each import reserves daemon-created random ID and explicit filename/size pairs; offset-checked 32 KiB chunks populate private files. Content hashes are accumulated while chunks arrive, so sealing a large video does not reread the file under the queue lock. Seal verifies sizes and fsyncs files before publishing a pending job. Queue state is fsynced and atomically replaced before scheduling. A write failure stops scheduling until restart; corrupt state fails initialization rather than silently resetting history. Received tokens are not persisted in queue state.
+### 2. ステージングとキュー登録 (Staging & Queueing)
+- 一時ファイルは 32 KiB 単位で Go コアの専用ステージング領域にコピーされ、サイズ整合性とハッシュ値（SHA-1 等）の検証が行われます。
+- ステージングが完了すると、キューの永続状態（`state.json`）がアトミックにディスクへ書き込まれ、アップロード待ちジョブとして確定します。
 
-The queue snapshots account and quality. Upload execution uses independent API clients for concurrency. Phase transitions are durable; per-byte progress is in-memory to avoid flash churn. On restart an incomplete import is cancelled, active upload returns to pending, and an uncertain commit becomes a failed job requiring manual review/retry. Network retries restart at byte zero. Remote hash checks reduce duplicate risk but cannot implement an exactly-once transaction with Google.
+### 3. アップロード実行 (Upload Execution)
+- キューワーカーがジョブを取り出し、現在の Google アカウントの認証情報と Pixel 端末プロファイル（Pixel XL 等）を用いて Google フォトサーバーと通信します。
+- サーバー上のハッシュ照合（重複チェック）、アップロードトークンの取得、バイナリ転送、およびコミット処理を行います。
+- **Live Photo の場合**: 静止画と動画の 2 つのリソースを適切なメタデータ（StillImageTime 等）とともに関連付け、Google フォト上で 1 つの再生可能な Live Photo としてコミットします。
 
-Staging is private to the mobile daemon. No `/var/jb` hardcoding in user data. The package-stage script expands Theos's package prefix only for executables, LaunchDaemons and the libSandy profile. Rootless and rootful must not be installed simultaneously.
+### 4. 完了後のステータス同期 (Reconciliation)
+- アップロードが完了すると、`Native/GSPhotosIntegration` を通じて Google フォト内部の同期処理（`fetchData` 等）が呼び出され、UI 上で対象の写真が「バックアップ完了」として反映されます。
 
-## Native account authorization
+---
 
-On application launch, both builds wait for the signed-in identity and automatically obtain a `photos.native` bearer from the existing SSO authorizer. No GoToHP screen is needed. Foreground activation rechecks authentication, with in-flight coalescing and bounded retries. Jailed calls that provider directly; jailbreak forwards the bearer through the existing audit-authorized Mach service using `account_native` for connection and `native_bearer` for renewal. Only Google Photos may submit or clear a native bearer. The daemon validates a new binding at the Photos endpoint before persisting email/native ID. Access tokens live only in memory and are never part of account summaries, state or diagnostics.
+## 🔑 認証とトークンの管理
 
-The host serializes reconnect and renewal, refreshes every 60 seconds while scheduled, and refreshes on foreground activation. The daemon enforces a five-minute local retention cap; this is not Google's expiry guarantee. New work waits without spending retries when a native binding lacks a bearer, including after daemon restart. An interrupted commit still requires review. Closing or suspending the app prevents indefinite SSO refresh; reopening it replenishes authorization. Queue account bindings are preserved, and a bearer for another identity is never used.
+- **シームレスなトークン取得**:
+  - Google フォトの内部 SSO サービス（`PHSAccountManagerImpl`）を利用し、ログイン中のアカウントから OAuth Bearer トークンを直接取得します。
+  - ユーザーが手動でトークンをコピーしたり、外部ツールからインポートする必要はありません。
+- **メモリ内保持と自動更新**:
+  - トークンはメモリ内でのみ保持され、ディスク上のログや設定ファイルには一切平文保存されません。
+  - 脱獄版ではデーモン内でのトークン保持期限を最大 5 分とし、期限切れの際は Google フォトの復帰時に自動的に再取得が行われます。
+- **サイドロード時のログイン補正**:
+  - Jailed 版では、Bundle ID の変更等によって Google SSO の認証がブロックされる現象を防ぐため、リクエスト時の識別子や Keychain アクセスグループを自動的に正規の識別子へ補正します。
 
-Settings live inside Google Photos. The jailbreak package no longer builds/registers the Preferences bundle, depends on PreferenceLoader, or authorizes the Settings process to reach the daemon.
+---
 
-## IPA inspection
+## 🛡️ 耐障害性と永続化 (Durability)
 
-Provided input: `com.google.photos-7.92.0-eeveedecrypter.ipa`.
-
-Read-only inspection of the main app Info.plist:
-
-| Field | Value |
-| --- | --- |
-| CFBundleIdentifier | com.google.photos |
-| CFBundleExecutable | GooglePhotos |
-| CFBundleShortVersionString | 7.92.0 |
-| MinimumOSVersion | 18.0 |
-| NSPhotoLibraryUsageDescription | Present |
-
-The initial integration used UIKit and public PhotoKit/PHPicker. Subsequent work added version/ABI-checked private manual-backup hooks and passive uploader diagnostics. The [application analysis index](analysis/index.md) links the complete extracted instance-method metadata, selected static call-path findings and unverified areas. No IPA executable or raw disassembly is distributed. Actual appearance and runtime compatibility still require device checks.
-
-Jailed builds replace the Mach client/daemon with an in-process adapter; see [jailed.md](jailed.md). Shared API-detected native manual/automatic backup routing and the host completion monitor are documented in [native-routing.md](native-routing.md).
+- **アトミックな状態保存**:
+  - ジョブの状態変更（Pending / Uploading / Completed / Failed）は、常に `fsync` とファイルのアトミック置換によってディスクに安全に保存されます。
+- **クラッシュ・強制終了からの復旧**:
+  - アプリの強制終了や端末の再起動が発生した場合、次回起動時に前回の状態が検査され、中断されたジョブは安全に `Pending`（再試行待ち）へ戻されて自動再開されます。
+- **重複アップロードの抑止**:
+  - アップロード前にサーバー側でのハッシュ照合を行い、すでにライブラリに存在するファイルは即座にコミット処理へ移行します。

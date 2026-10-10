@@ -1,5 +1,7 @@
 # Google Photos 7.20.2 compatibility audit
 
+> 解析・診断の記録です。現在の手順は[ドキュメント索引](../README.md)を参照してください。日付・版ごとの観測や過去の実装を含みます。
+
 The supplied **Google Photos 7.20.2**, build **7.20.738660793**, and **7.92.0** are IPA-audited reference versions. Adapters are now selected per feature from the actual classes, selectors and exact Objective-C signatures, without a version-number gate. Authentication, completion callbacks, storage UI and quality UI can independently use different API generations. Device validation is still required; binary audits and mocked contracts do not establish successful authentication or uploads against Google's servers.
 
 ## Input and OS requirements
@@ -26,7 +28,7 @@ The main image yielded 6,780 classes / 64,988 instance methods; ModuleFramework 
 
 `SSOService.authorizationForIdentity:scopes:` at ModuleFramework `0x14a804` uses the identity's user ID and sorted scopes for its authorization cache and constructs `SSOAuthorizationImpl` with `initWithSSOIdentity:scopes:logger:`. The adapter passes the currently viewed account's valid `_ssoIdentity` and `photos.native` scope. Native SSO retains ownership of refresh and Keychain access. Account matching before/after completion, the background-thread wait, timeout, and token redaction remain in place.
 
-**Sign in before injecting.** First open Google Photos without the tweak and complete Google login; then install the tweak or update to the injected IPA while preserving the same app data and signing identity. Injection can cause Google to reject login. An app downgrade may also fail to read newer app data; this change does not provide a database migration or guarantee that a 7.92.0 session survives a downgrade.
+**Installation guidance moved:** follow the [current installation guide](../jailed.md), which enables GunshotJailed before sign-in. The earlier login-first recommendation predates the SSO identity/Keychain adapters. Preserve app data and signing identity when updating; a downgrade still has no guaranteed database/session migration.
 
 ### Backup handoff and completion
 
@@ -50,9 +52,9 @@ Only `isBackedUp`, `hasOriginalBytes == Yes (1)`, non-partial backup, and storag
 
 ## Validation
 
-The macOS CI runs both 7.92.0 and 7.20.2 contracts. Legacy fixtures omit the new SSO factory, new asset-completion selector, new detail-model class, storage title getter, and Swift upload service. They exercise native account switching, silent manual/automatic routing, reconciliation failure without native payload fallback, integer completion preservation, quality evidence checks, account-bound refresh, settings actions, and native unlimited on/off/archive behavior. CI also builds rootless, rootful, and jailed packages and runs the existing UIKit settings smoke test.
+The macOS CI runs both 7.92.0 and 7.20.2 contracts. Legacy fixtures omit the new SSO factory, new asset-completion selector, new detail-model class, storage title getter, and Swift upload service. They exercise native account switching, silent manual/automatic routing, reconciliation failure without native payload fallback, integer completion preservation, quality evidence checks, account-bound refresh, settings actions, and native unlimited on/off/archive behavior. CI also builds rootless, rootful, and jailed packages. The former UIKit settings smoke test has been removed.
 
-Real-device checks still needed on 7.20.2: login-first installation, native account refresh, settings/menu tap, unlimited display on/off after reopening the menu, original JPEG/HEIC/video/Live Photo upload, manual and automatic handoff, completion refresh without relaunch, cancellation/network loss, and upgrade/downgrade behavior. Jailed uploads require the app to remain active; this is not a background-execution entitlement change.
+Real-device checks still needed on 7.20.2: installation with the current SSO adapters, native account refresh, settings/menu tap, unlimited display on/off after reopening the menu, original JPEG/HEIC/video/Live Photo upload, manual and automatic handoff, completion refresh without relaunch, cancellation/network loss, and upgrade/downgrade behavior. Jailed uploads require the app to remain active; this is not a background-execution entitlement change.
 
 ## Automatic API detection
 

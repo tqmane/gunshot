@@ -1,61 +1,118 @@
 #!/usr/bin/env python3
-"""Project pinned upstream into a disposable build tree. Never modify the submodule."""
+"""Project pinned upstream plus the iOS overlay into .build/upstream."""
 from pathlib import Path
 import shutil
 import subprocess
-r = Path(__file__).resolve().parents[1]
-u = r / 'GotohpCore/upstream'
-rev = (r / 'GotohpCore/UPSTREAM_REVISION').read_text().strip()
-assert subprocess.check_output(['git', '-C', str(u), 'rev-parse', 'HEAD'], text=True).strip() == rev, 'upstream revision mismatch'
-d = r / '.build/upstream'
-if d.exists(): shutil.rmtree(d)
-d.mkdir(parents=True)
-for name in ['backend', 'generated']:
-    shutil.copytree(u / name, d / name)
-shutil.copy2(u / 'LICENSE', d / 'LICENSE')
-for path in (d / 'backend').glob('wails*.go'): path.unlink()
-# Replace desktop configuration/ADB with the small iOS store adapter.
-s = (u / 'backend/configmanager.go').read_text()
-prefs = s[s.index('type Preferences struct {'):s.index('// Config is the on-disk')]
-(d / 'backend/configmanager.go').write_text((r / 'GotohpCore/config_ios.go.txt').read_text().replace('// UPSTREAM_PREFERENCES', prefs).replace('// UPSTREAM_SETTERS', s[s.index('func (g *ConfigManager) SetProxy'):s.index('func (g *ConfigManager) AddCredentials')]))
-(d / 'backend/config_migration_test.go').unlink()
-# Upstream dereferences a nil TLSClientConfig on an ordinary Go transport.
-# Exact replacement fails closed when upstream changes this section.
-p = d / 'backend/httpclient.go'
-s = p.read_text()
-old = 'transport.TLSClientConfig.InsecureSkipVerify = false'
-assert s.count(old) == 1, 'review upstream HTTP transport changes'
-s = s.replace('"compress/gzip"', '"compress/gzip"\n "crypto/tls"')
-s = s.replace(old, 'if transport.TLSClientConfig == nil { transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12} }\n\t' + old)
-s = s.replace('transport.TLSClientConfig.InsecureSkipVerify = true', 'transport.TLSClientConfig.InsecureSkipVerify = false')
-s = s.replace('Timeout:   0,', 'Timeout:   6 * time.Hour,')
-p.write_text(s)
-(d / 'go.mod').write_text('module app\n\ngo 1.26.0\n\nrequire (\n github.com/tink-crypto/tink-go/v2 v2.8.0\n google.golang.org/protobuf v1.36.12\n)\n')
-shutil.copy2(u / 'go.sum', d / 'go.sum')
-shutil.copy2(r / 'GotohpCore/facade.go.txt', d / 'backend/gunshot_facade.go')
-# A failed remote hash lookup must not silently cause a duplicate after restart.
-p = d / 'backend/upload.go'
-s = p.read_text()
-start = s.index('\t\tif err != nil {\n\t\t\t// Non-fatal:')
-end = s.index('\n\t\tif len(mediakey)', start)
-s = s[:start] + '\t\tif err != nil { return "", fmt.Errorf("remote duplicate check failed: %w", err) }' + s[end:]
-p.write_text(s)
 
-# Same persistence assertions, using the iOS JSON store rather than desktop YAML.
-p = d / 'backend/googleauth_test.go'
-s = p.read_text().replace('"proxy: %s"', '`"proxy":"%s"`').replace('"upload_threads: %d"', '`"uploadThreads":%d`')
-p.write_text(s)
+ROOT = Path(__file__).resolve().parents[1]
+UPSTREAM = ROOT / "GotohpCore/upstream"
+OVERLAY = ROOT / "GotohpCore/overlay"
+OUTPUT = ROOT / ".build/upstream"
 
-# iOS session tokens stay in the host. Refresh is delegated to its SSO authorizer.
-shutil.copy2(r / 'GotohpCore/native_auth.go.txt', d / 'backend/gunshot_native_auth.go')
-shutil.copy2(r / 'tests/native_auth_test.go.txt', d / 'backend/gunshot_native_auth_test.go')
-p = d / 'backend/api.go'
-s = p.read_text()
-needle = 'func (a *Api) BearerToken() (string, error) {'
-assert s.count(needle) == 1, 'review upstream bearer-token entry point'
-s = s.replace(needle, needle + '\n if token, native, err := gunshotNativeBearer(a.authData); native { return token, err }')
-p.write_text(s)
-shutil.copy2(r / 'tests/quality_wire_test.go.txt', d / 'backend/gunshot_quality_wire_test.go')
 
-shutil.copy2(r / 'tests/context_transport_test.go.txt', d / 'backend/gunshot_context_transport_test.go')
-shutil.copy2(r / 'tests/live_photo_upload_test.go.txt', d / 'backend/gunshot_live_photo_upload_test.go')
+def replace_once(source, old, new):
+    """Fail at upstream drift instead of silently dropping an adaptation."""
+    if source.count(old) != 1:
+        raise ValueError(f"review upstream changes: expected one occurrence of {old!r}")
+    return source.replace(old, new, 1)
+
+
+def prepare_config():
+    source = (UPSTREAM / "backend/configmanager.go").read_text()
+    preferences = source[
+        source.index("type Preferences struct {") : source.index(
+            "// Config is the on-disk"
+        )
+    ]
+    setters = source[
+        source.index("func (g *ConfigManager) SetProxy") : source.index(
+            "func (g *ConfigManager) AddCredentials"
+        )
+    ]
+    template = (OVERLAY / "backend/configmanager.go.tmpl").read_text()
+    template = replace_once(template, "// UPSTREAM_PREFERENCES", preferences)
+    template = replace_once(template, "// UPSTREAM_SETTERS", setters)
+    (OUTPUT / "backend/configmanager.go").write_text(template)
+    (OUTPUT / "backend/config_migration_test.go").unlink()
+
+
+def adapt_transport():
+    path = OUTPUT / "backend/httpclient.go"
+    source = replace_once(
+        path.read_text(), '"compress/gzip"', '"compress/gzip"\n "crypto/tls"'
+    )
+    # Upstream dereferences a nil TLSClientConfig on an ordinary Go transport.
+    verify_tls = "transport.TLSClientConfig.InsecureSkipVerify = false"
+    source = replace_once(
+        source,
+        verify_tls,
+        "if transport.TLSClientConfig == nil { transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12} }\n\t"
+        + verify_tls,
+    )
+    source = replace_once(
+        source, "transport.TLSClientConfig.InsecureSkipVerify = true", verify_tls
+    )
+    source = replace_once(source, "Timeout:   0,", "Timeout:   6 * time.Hour,")
+    path.write_text(source)
+
+
+def adapt_upload():
+    # A failed remote hash lookup must not cause a duplicate after restart.
+    path = OUTPUT / "backend/upload.go"
+    source = path.read_text()
+    start = source.index("\t\tif err != nil {\n\t\t\t// Non-fatal:")
+    end = source.index("\n\t\tif len(mediakey)", start)
+    path.write_text(
+        source[:start]
+        + '\t\tif err != nil { return "", fmt.Errorf("remote duplicate check failed: %w", err) }'
+        + source[end:]
+    )
+
+    # Session tokens stay in the host; refresh uses its SSO authorizer.
+    path = OUTPUT / "backend/api.go"
+    entry = "func (a *Api) BearerToken() (string, error) {"
+    path.write_text(
+        replace_once(
+            path.read_text(),
+            entry,
+            entry
+            + "\n if token, native, err := gunshotNativeBearer(a.authData); native { return token, err }",
+        )
+    )
+
+
+def adapt_persistence_tests():
+    # Keep upstream assertions, translating desktop YAML to the iOS JSON store.
+    path = OUTPUT / "backend/googleauth_test.go"
+    source = replace_once(path.read_text(), '"proxy: %s"', '`"proxy":"%s"`')
+    source = replace_once(source, '"upload_threads: %d"', '`"uploadThreads":%d`')
+    path.write_text(source)
+
+
+def main():
+    revision = (ROOT / "GotohpCore/UPSTREAM_REVISION").read_text().strip()
+    actual = subprocess.check_output(
+        ["git", "-C", str(UPSTREAM), "rev-parse", "HEAD"], text=True
+    ).strip()
+    if actual != revision:
+        raise SystemExit("upstream revision mismatch; initialize the pinned submodule")
+    if OUTPUT.exists():
+        shutil.rmtree(OUTPUT)
+    OUTPUT.mkdir(parents=True)
+    for name in ["backend", "generated"]:
+        shutil.copytree(UPSTREAM / name, OUTPUT / name)
+    for name in ["LICENSE", "go.sum"]:
+        shutil.copy2(UPSTREAM / name, OUTPUT / name)
+    for path in (OUTPUT / "backend").glob("wails*.go"):
+        path.unlink()
+    shutil.copy2(OVERLAY / "go.mod", OUTPUT / "go.mod")
+    for path in (OVERLAY / "backend").glob("*.go"):
+        shutil.copy2(path, OUTPUT / "backend" / path.name)
+    prepare_config()
+    adapt_transport()
+    adapt_upload()
+    adapt_persistence_tests()
+
+
+if __name__ == "__main__":
+    main()

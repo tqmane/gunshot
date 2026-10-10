@@ -8,18 +8,22 @@ import (
 
 // Native code supplies identity from the kernel audit trailer, never JSON.
 func roleAllowed(role, op string) bool {
-	if role == "daemon" {
-		return op == "conditions"
+	switch op {
+	case "conditions":
+		return role == "daemon"
+	case "upload_summary", "job", "ping", "list", "accounts", "options", "retry", "cancel", "clear_completed", "retry_failed":
+		return role == "photos" || role == "googlephotos" || role == "settings"
+	case "begin", "append", "seal":
+		return role == "photos" || role == "googlephotos"
+	case "account_native", "native_bearer", "native_bearer_clear":
+		return role == "googlephotos"
+	case "configure", "account_add", "account_remove", "account_select":
+		return role == "settings" || role == "googlephotos"
+	default:
+		return false
 	}
-	common := op == "upload_summary" || op == "job" || op == "ping" || op == "list" || op == "accounts" || op == "options" || op == "retry" || op == "cancel" || op == "clear_completed" || op == "retry_failed"
-	if role == "settings" || role == "googlephotos" {
-		return common || (role == "googlephotos" && (op == "begin" || op == "append" || op == "seal" || op == "account_native" || op == "native_bearer" || op == "native_bearer_clear")) || op == "configure" || op == "account_add" || op == "account_remove" || op == "account_select"
-	}
-	if role == "photos" {
-		return common || op == "begin" || op == "append" || op == "seal"
-	}
-	return false
 }
+
 func (e *Engine) HandleJSON(b []byte, role string) []byte {
 	if len(b) > MaxMessage {
 		return response(nil, errRequest)

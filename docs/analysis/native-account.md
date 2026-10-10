@@ -1,5 +1,7 @@
 # Google Photos のログイン中アカウントとメニュー
 
+> 解析・診断の記録です。現在の手順は[ドキュメント索引](../README.md)を参照してください。日付・版ごとの観測や過去の実装を含みます。
+
 対象: Google Photos 7.20.2 / 7.92.0を解析基準とするAPI自動検出。jailed / Sideloadly / LiveContainer、およびrootless / rootful。
 
 ## 実機で報告された事象
@@ -77,7 +79,7 @@ jailed の診断 JSON には `runtime` が追加されます。
 証拠にはなりません。今回の添付診断は観測イベント 0 件であり、実機で待機した
 原因を特定できる情報は含まれていませんでした。
 
-シミュレーターテストは実際の EmbeddedService / UIKit / NWPath を使用し、
+当時のシミュレーターテスト（現在は削除済み）は実際の EmbeddedService / UIKit / NWPath を使用し、
 実際の Go c-archive に開始条件とキュー参照を渡し、アカウント操作だけを fixture に置換します。認証中の main callback
 から診断取得できること、前面での online 伝達、認証確認表示、秘密情報を
 含まない診断キーを検証します。実 Google アカウント認証・アップロード成功を
@@ -116,4 +118,4 @@ C ABI テストでも数値の拒否、JSON boolean の受理と online=true の
 
 `GSAccountConnection` を両方の起動フックから開始する。SSO manager/identityがまだ利用できなければ2秒のmetadataポーリングで待つ。ログイン前には認証要求を送らず、identityが利用可能になるとworkerから `account_native` を実行する。成功後の通常ポーリングは認証RPCを送らない。失敗後は60秒間隔、前面復帰では再確認し、5秒以内の重複通知を抑止する。サインアウト・identity変更も検出し、古い取得結果を新しいアカウントの接続成功として扱わない。
 
-GoToHP画面の `viewDidLoad` から自動接続を開始する処理は削除。「再接続」は明示的な再試行として残す。設定画面を開かないnative fixtureをjailed/jailbreak × 新旧APIで実行する。UIKit fixtureも設定を提示する前に自動接続が完了していることを確認する。診断の `accountConnection` は状態だけで、アカウントIDやトークンを含めない。
+GoToHP画面の `viewDidLoad` から自動接続を開始する処理は削除。「再接続」は明示的な再試行として残す。設定画面を開かないnative fixtureをjailed/jailbreak × 新旧APIで実行する。当時の UIKit fixture も設定を提示する前の自動接続を検証したが、この fixture は削除済み。診断の `accountConnection` は状態だけで、アカウントIDやトークンを含めない。
