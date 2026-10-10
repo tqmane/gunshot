@@ -193,48 +193,47 @@ static NSDictionary *Run(void) {
     return done;
 }
 
-static void CheckRAWJPEGExport(void) {
-    // Both entry points (native and bulk import) call this same exporter.
-    NSArray<NSString *> *cases = @[
-        @"raw-primary|alternate.JPG|primary.DNG",
-        @"jpeg-primary|primary.JPG|alt.DNG",
-        @"raw-only|primary.DNG",
-        @"heic-primary|primary.HEIC",
-        @"raw-extension|alternate.jpeg|primary.NEF",
-        @"raw-uti|alternate.bin|primary.bin"
-    ];
+static void CheckRAWJPEGExportCase(NSString *fixture) {
+    // Both native backup and album import use this same PhotoKit exporter.
     dispatch_sync(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        for (NSString *fixture in cases) {
-            @autoreleasepool {
-                NSArray *parts = [fixture componentsSeparatedByString:@"|"];
-                PHAsset *asset = [PHAsset new];
-                asset.localIdentifier = parts[0];
-                asset.mediaType = PHAssetMediaTypeImage;
-                NSURL *directory = [NSURL
-                    fileURLWithPath:[NSTemporaryDirectory()
-                                        stringByAppendingPathComponent:NSUUID.UUID.UUIDString]
-                        isDirectory:YES];
-                NSError *error = nil;
-                assert([NSFileManager.defaultManager createDirectoryAtURL:directory
-                                              withIntermediateDirectories:YES
-                                                               attributes:nil
-                                                                    error:&error]);
-                NSArray<NSURL *> *files = GSExportAsset(asset, directory, &error);
-                NSArray<NSString *> *expected = [parts subarrayWithRange:NSMakeRange(1, parts.count - 1)];
-                assert(!error && files.count == expected.count);
-                for (NSUInteger i = 0; i < expected.count; i++) {
-                    assert([files[i].lastPathComponent isEqual:expected[i]]);
-                    NSString *extension = files[i].pathExtension.lowercaseString;
-                    BOOL raw = [@[ @"dng", @"nef" ] containsObject:extension];
-                    if ([asset.localIdentifier isEqual:@"raw-uti"] && i == 1)
-                        raw = YES;
-                    NSData *sourceBytes = raw ? RAWBytes() : OriginalBytes(NO);
-                    assert([[NSData dataWithContentsOfURL:files[i]] isEqual:sourceBytes]);
-                }
-                [NSFileManager.defaultManager removeItemAtURL:directory error:nil];
+        @autoreleasepool {
+            NSArray *parts = [fixture componentsSeparatedByString:@"|"];
+            PHAsset *asset = [PHAsset new];
+            asset.localIdentifier = parts[0];
+            asset.mediaType = PHAssetMediaTypeImage;
+            NSURL *directory = [NSURL
+                fileURLWithPath:[NSTemporaryDirectory()
+                                    stringByAppendingPathComponent:NSUUID.UUID.UUIDString]
+                    isDirectory:YES];
+            NSError *error = nil;
+            assert([NSFileManager.defaultManager createDirectoryAtURL:directory
+                                          withIntermediateDirectories:YES
+                                                           attributes:nil
+                                                                error:&error]);
+            NSArray<NSURL *> *files = GSExportAsset(asset, directory, &error);
+            NSRange expectedRange = NSMakeRange(1, parts.count - 1);
+            NSArray<NSString *> *expected = [parts subarrayWithRange:expectedRange];
+            assert(!error && files.count == expected.count);
+            for (NSUInteger i = 0; i < expected.count; i++) {
+                assert([files[i].lastPathComponent isEqual:expected[i]]);
+                NSString *extension = files[i].pathExtension.lowercaseString;
+                BOOL raw = [@[ @"dng", @"nef" ] containsObject:extension];
+                if ([asset.localIdentifier isEqual:@"raw-uti"] && i == 1)
+                    raw = YES;
+                NSData *sourceBytes = raw ? RAWBytes() : OriginalBytes(NO);
+                assert([[NSData dataWithContentsOfURL:files[i]] isEqual:sourceBytes]);
             }
+            [NSFileManager.defaultManager removeItemAtURL:directory error:nil];
         }
     });
+}
+static void CheckRAWJPEGExport(void) {
+    CheckRAWJPEGExportCase(@"raw-primary|alternate.JPG|primary.DNG");
+    CheckRAWJPEGExportCase(@"jpeg-primary|primary.JPG|alt.DNG");
+    CheckRAWJPEGExportCase(@"raw-only|primary.DNG");
+    CheckRAWJPEGExportCase(@"heic-primary|primary.HEIC");
+    CheckRAWJPEGExportCase(@"raw-extension|alternate.jpeg|primary.NEF");
+    CheckRAWJPEGExportCase(@"raw-uti|alternate.bin|primary.bin");
 }
 int main(void) {
     @autoreleasepool {
