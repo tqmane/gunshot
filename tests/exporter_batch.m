@@ -121,7 +121,8 @@ static PHAssetResource *FixtureResource(PHAssetResourceType type, NSString *name
     BOOL raw = [resource.uniformTypeIdentifier isEqualToString:@"com.adobe.raw-image"] ||
                [@[ @"dng", @"nef" ]
                    containsObject:resource.originalFilename.pathExtension.lowercaseString];
-    NSData *bytes = raw ? RAWBytes() : OriginalBytes(resource.type == PHAssetResourceTypePairedVideo);
+    BOOL movie = resource.type == PHAssetResourceTypePairedVideo;
+    NSData *bytes = raw ? RAWBytes() : OriginalBytes(movie);
     [bytes writeToURL:url options:0 error:&error];
     completion(error);
 }
@@ -194,19 +195,20 @@ static NSDictionary *Run(void) {
 
 static void CheckRAWJPEGExport(void) {
     // Both entry points (native and bulk import) call this same exporter.
-    NSArray<NSDictionary *> *cases = @[
-        @{@"id" : @"raw-primary", @"expected" : @[ @"alternate.JPG", @"primary.DNG" ]},
-        @{@"id" : @"jpeg-primary", @"expected" : @[ @"primary.JPG", @"alt.DNG" ]},
-        @{@"id" : @"raw-only", @"expected" : @[ @"primary.DNG" ]},
-        @{@"id" : @"heic-primary", @"expected" : @[ @"primary.HEIC" ]},
-        @{@"id" : @"raw-extension", @"expected" : @[ @"alternate.jpeg", @"primary.NEF" ]},
-        @{@"id" : @"raw-uti", @"expected" : @[ @"alternate.bin", @"primary.bin" ]}
+    NSArray<NSString *> *cases = @[
+        @"raw-primary|alternate.JPG|primary.DNG",
+        @"jpeg-primary|primary.JPG|alt.DNG",
+        @"raw-only|primary.DNG",
+        @"heic-primary|primary.HEIC",
+        @"raw-extension|alternate.jpeg|primary.NEF",
+        @"raw-uti|alternate.bin|primary.bin"
     ];
     dispatch_sync(dispatch_get_global_queue(QOS_CLASS_UTILITY, 0), ^{
-        for (NSDictionary *fixture in cases) {
+        for (NSString *fixture in cases) {
             @autoreleasepool {
+                NSArray *parts = [fixture componentsSeparatedByString:@"|"];
                 PHAsset *asset = [PHAsset new];
-                asset.localIdentifier = fixture[@"id"];
+                asset.localIdentifier = parts[0];
                 asset.mediaType = PHAssetMediaTypeImage;
                 NSURL *directory = [NSURL
                     fileURLWithPath:[NSTemporaryDirectory()
@@ -218,13 +220,14 @@ static void CheckRAWJPEGExport(void) {
                                                                attributes:nil
                                                                     error:&error]);
                 NSArray<NSURL *> *files = GSExportAsset(asset, directory, &error);
-                NSArray<NSString *> *expected = fixture[@"expected"];
+                NSArray<NSString *> *expected = [parts subarrayWithRange:NSMakeRange(1, parts.count - 1)];
                 assert(!error && files.count == expected.count);
                 for (NSUInteger i = 0; i < expected.count; i++) {
                     assert([files[i].lastPathComponent isEqual:expected[i]]);
-                    BOOL raw = ([asset.localIdentifier isEqual:@"raw-uti"] && i == 1) ||
-                               [@[ @"dng", @"nef" ]
-                                   containsObject:files[i].pathExtension.lowercaseString];
+                    NSString *extension = files[i].pathExtension.lowercaseString;
+                    BOOL raw = [@[ @"dng", @"nef" ] containsObject:extension];
+                    if ([asset.localIdentifier isEqual:@"raw-uti"] && i == 1)
+                        raw = YES;
                     NSData *sourceBytes = raw ? RAWBytes() : OriginalBytes(NO);
                     assert([[NSData dataWithContentsOfURL:files[i]] isEqual:sourceBytes]);
                 }
@@ -269,7 +272,6 @@ int main(void) {
         assert(dispatch_group_wait(group, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC)) ==
                0);
         assert(atomic_load(&PeakExports) == 1);
-        NSLog(@"PASS 60 HEIC/HEIF originals, Live Photo resources, exact IPC bytes/timestamp, "
-              @"unreadable original isolation, RAW+JPEG paired originals and bounded native exports");
+        NSLog(@"PASS original exports, RAW+JPEG pairs, live photos and bounded concurrency");
     }
 }
