@@ -119,7 +119,7 @@ func TestGunshotRAWPairTwoConfirmedCommits(t *testing.T) {
 				case r.Method == http.MethodPut:
 					sha := sha1.Sum(body)
 					uploadID := base64.StdEncoding.EncodeToString(sha[:])
-					if r.URL.Query().Get("upload_id") != uploadID {
+					if strings.TrimPrefix(r.URL.RawQuery, "upload_id=") != uploadID {
 						t.Fatal("wrong raw/cover component sent")
 					}
 					match := false
