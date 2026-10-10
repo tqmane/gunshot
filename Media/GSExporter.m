@@ -9,12 +9,14 @@ static BOOL GSResourceIsRAW(PHAssetResource *resource) {
         return NO;
     NSString *uti = resource.uniformTypeIdentifier.lowercaseString;
     NSString *extension = resource.originalFilename.pathExtension.lowercaseString;
-    return [uti isEqualToString:@"com.adobe.raw-image"] ||
-           [uti isEqualToString:@"public.camera-raw-image"] || [uti hasSuffix:@"-raw-image"] ||
-           (extension.length && [@[
-               @"dng", @"arw", @"cr2", @"cr3", @"nef", @"nrw", @"orf", @"pef", @"raf",
-               @"raw", @"rw2", @"srw"
-           ] containsObject:extension]);
+    if ([uti isEqualToString:@"com.adobe.raw-image"] ||
+        [uti isEqualToString:@"public.camera-raw-image"] || [uti hasSuffix:@"-raw-image"])
+        return YES;
+    if (!extension.length)
+        return NO;
+    NSArray *cameraRAW = @[ @"dng", @"arw", @"cr2", @"cr3", @"nef", @"nrw" ];
+    NSArray *otherRAW = @[ @"orf", @"pef", @"raf", @"raw", @"rw2", @"srw" ];
+    return [cameraRAW containsObject:extension] || [otherRAW containsObject:extension];
 }
 static BOOL GSResourceIsJPEG(PHAssetResource *resource) {
     if (!resource)
