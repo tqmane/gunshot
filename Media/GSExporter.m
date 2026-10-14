@@ -5,21 +5,34 @@ static NSArray<NSURL *> *GSWriteOriginalResources(PHAsset *asset, NSURL *directo
                                                   NSError **error) {
     NSArray *resources = [PHAssetResource assetResourcesForAsset:asset];
     NSMutableArray *chosen = [NSMutableArray array];
-    PHAssetResourceType type = asset.mediaType == PHAssetMediaTypeVideo ? PHAssetResourceTypeVideo
-                                                                        : PHAssetResourceTypePhoto;
-    for (PHAssetResource *r in resources)
-        if (r.type == type) {
-            [chosen addObject:r];
-            break;
-        }
-    if (asset.mediaSubtypes & PHAssetMediaSubtypePhotoLive)
-        for (PHAssetResource *r in resources)
-            if (r.type == PHAssetResourceTypePairedVideo) {
-                [chosen addObject:r];
-                break;
+    BOOL video = asset.mediaType == PHAssetMediaTypeVideo;
+    BOOL live = (asset.mediaSubtypes & PHAssetMediaSubtypePhotoLive) != 0;
+    // Adjusted assets (including camera-applied adjustments the user never
+    // edited) back up their current rendition: the native fingerprint lookup
+    // after a GoToHP upload only finds the full-size bytes (device 2026-10-07).
+    PHAssetResource * (^pick)(PHAssetResourceType, PHAssetResourceType) =
+        ^PHAssetResource *(PHAssetResourceType rendered, PHAssetResourceType base) {
+            PHAssetResource *found = nil;
+            for (PHAssetResource *r in resources) {
+                if (r.type == rendered)
+                    return r;
+                if (r.type == base && !found)
+                    found = r;
             }
-    if (!chosen.count ||
-        ((asset.mediaSubtypes & PHAssetMediaSubtypePhotoLive) && chosen.count != 2)) {
+            return found;
+        };
+    PHAssetResource *main = video
+                                ? pick(PHAssetResourceTypeFullSizeVideo, PHAssetResourceTypeVideo)
+                                : pick(PHAssetResourceTypeFullSizePhoto, PHAssetResourceTypePhoto);
+    if (main)
+        [chosen addObject:main];
+    if (live) {
+        PHAssetResource *paired =
+            pick(PHAssetResourceTypeFullSizePairedVideo, PHAssetResourceTypePairedVideo);
+        if (paired)
+            [chosen addObject:paired];
+    }
+    if (!chosen.count || (live && chosen.count != 2)) {
         if (error)
             *error = [NSError errorWithDomain:@"Gunshot"
                                          code:2
@@ -29,9 +42,20 @@ static NSArray<NSURL *> *GSWriteOriginalResources(PHAsset *asset, NSURL *directo
                                      }];
         return nil;
     }
+    // Rendered resources are named FullSizeRender.*; keep the capture name so the
+    // item title and the Live Photo stem pairing stay as before.
+    NSString *stem = nil;
+    for (PHAssetResource *r in resources)
+        if (r.type == (video ? PHAssetResourceTypeVideo : PHAssetResourceTypePhoto)) {
+            stem = r.originalFilename.lastPathComponent.stringByDeletingPathExtension;
+            break;
+        }
     NSMutableArray *files = [NSMutableArray array];
     for (PHAssetResource *r in chosen) {
-        NSURL *url = [directory URLByAppendingPathComponent:r.originalFilename.lastPathComponent];
+        NSString *name = r.originalFilename.lastPathComponent;
+        if (stem.length && name.pathExtension.length)
+            name = [stem stringByAppendingPathExtension:name.pathExtension];
+        NSURL *url = [directory URLByAppendingPathComponent:name];
         if ([NSFileManager.defaultManager fileExistsAtPath:url.path])
             return nil;
         PHAssetResourceRequestOptions *options = [PHAssetResourceRequestOptions new];
