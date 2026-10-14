@@ -131,6 +131,13 @@ func (e *Engine) seal(j *Job) (any, error) {
 			continue
 		}
 		if old.ID != j.ID && old.Fingerprint == fingerprint && old.State != "cancelled" {
+			// A new request for the same content is an explicit retry. Returning
+			// the failed job unchanged made native backup fail again forever.
+			// Failed jobs keep their staging files, so the upload restarts.
+			if old.State == "failed" {
+				old.resetRetry()
+				old.Error = ""
+			}
 			j.State = "cancelled"
 			if err := e.save(); err != nil {
 				return nil, err

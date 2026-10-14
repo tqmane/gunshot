@@ -318,3 +318,22 @@ func TestOriginalDoesNotReuseLegacyUnverifiedCompletion(t *testing.T) {
 		t.Fatal("current original completion was not deduplicated")
 	}
 }
+
+func TestDuplicateImportRetriesFailedJob(t *testing.T) {
+	e := newEngine(t, nil)
+	old := importTest(t, e, "original")
+	old.State = "failed"
+	old.Error = "commit_outcome_unknown"
+	old.Attempts = 4
+	old.Next = 99
+	duplicate := importTest(t, e, "original")
+	if duplicate.State != "cancelled" {
+		t.Fatal("failed job content was imported twice")
+	}
+	if old.State != "pending" || old.Error != "" || old.Attempts != 0 || old.Next != 0 {
+		t.Fatalf("failed job was not reset for retry: %+v", old)
+	}
+	if _, err := os.Stat(filepath.Join(e.jobDir(old.ID), "photo.jpg")); err != nil {
+		t.Fatal("failed job staging was not kept for retry")
+	}
+}
