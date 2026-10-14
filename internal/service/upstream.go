@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"path/filepath"
+	"time"
 )
 
 var errRemoteComponentExists = backend.ErrGunshotRemoteComponentExists
@@ -27,6 +28,31 @@ func accountExists(email string) bool {
 	}
 	return false
 }
+
+// The validation HTTP client has no short timeout (uploads need hours), so a
+// stalled request must not leave the caller waiting indefinitely.
+var nativeValidationTimeout = 60 * time.Second
+
+// Runs without e.mu: see HandleJSON.
+func (e *Engine) accountNative(r Request) (any, error) {
+	if e.nativeRelay != nil {
+		if err := e.nativeRelay.put(r.NativeID, r.Secret); err != nil {
+			return nil, err
+		}
+	}
+	done := make(chan error, 1)
+	go func() { done <- (&backend.ConfigManager{}).AddNativeAccount(r.Account, r.NativeID) }()
+	var err error
+	select {
+	case err = <-done:
+	case <-time.After(nativeValidationTimeout):
+		err = errors.New("Google Photos native account validation timed out")
+	}
+	if err != nil && e.nativeRelay != nil {
+		e.nativeRelay.clear()
+	}
+	return nil, err
+}
 func (e *Engine) accounts(r Request) (any, error) {
 	g := &backend.ConfigManager{}
 	switch r.Op {
@@ -34,16 +60,7 @@ func (e *Engine) accounts(r Request) (any, error) {
 		a := g.GetAccounts()
 		return map[string]any{"accounts": a.Accounts, "selected": a.Selected, "nativeAuthorization": e.nativeAuthorization(a.Selected)}, nil
 	case "account_native":
-		if e.nativeRelay != nil {
-			if err := e.nativeRelay.put(r.NativeID, r.Secret); err != nil {
-				return nil, err
-			}
-		}
-		err := g.AddNativeAccount(r.Account, r.NativeID)
-		if err != nil && e.nativeRelay != nil {
-			e.nativeRelay.clear()
-		}
-		return nil, err
+		return e.accountNative(r)
 	case "native_bearer":
 		if e.nativeRelay == nil || backend.GunshotNativeAccountID(r.Account) != r.NativeID || r.NativeID == "" {
 			return nil, errRequest

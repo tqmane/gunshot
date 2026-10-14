@@ -48,12 +48,17 @@ func relayRequest(t *testing.T, e *Engine, role string, r Request, want bool) {
 
 func nativeValidationServer(t *testing.T) {
 	t.Helper()
-	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	nativeValidationServerWith(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.Header.Get("Authorization") != "Bearer synthetic-native-bearer" {
 			t.Error("native authorization header missing")
 		}
 		w.WriteHeader(http.StatusOK) // Empty protobuf: no match for the validation hash.
-	}))
+	})
+}
+
+func nativeValidationServerWith(t *testing.T, handler http.HandlerFunc) {
+	t.Helper()
+	server := httptest.NewTLSServer(handler)
 	t.Cleanup(server.Close)
 	previous := http.DefaultTransport
 	transport := previous.(*http.Transport).Clone()
@@ -174,4 +179,59 @@ func TestNativeRelayConcurrentRefreshAndExpiry(t *testing.T) {
 	if _, err := r.get("id-a"); err == nil || r.token != "" {
 		t.Fatal("retention boundary did not discard token")
 	}
+}
+
+func TestNativeValidationDoesNotHoldEngineLock(t *testing.T) {
+	e := relayEngine(t, nil)
+	release := make(chan struct{})
+	var once sync.Once
+	nativeValidationServerWith(t, func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-release:
+		case <-r.Context().Done():
+		}
+		// The abandoned validation must fail, so it never writes credentials into
+		// the test directory after the test has finished.
+		w.WriteHeader(http.StatusServiceUnavailable)
+	})
+	// Registered after the server so it runs first: Close waits for handlers.
+	t.Cleanup(func() { once.Do(func() { close(release) }) })
+	previous := nativeValidationTimeout
+	nativeValidationTimeout = 2 * time.Second
+	t.Cleanup(func() { nativeValidationTimeout = previous })
+	// Goroutines only send replies; assertions stay on the test goroutine.
+	call := func(role string, r Request) <-chan bool {
+		reply := make(chan bool, 1)
+		wire, _ := json.Marshal(r)
+		go func() {
+			var result struct {
+				OK bool `json:"ok"`
+			}
+			_ = json.Unmarshal(e.HandleJSON(wire, role), &result)
+			reply <- result.OK
+		}()
+		return reply
+	}
+	validated := call("googlephotos", Request{Op: "account_native", Account: "a@example.com", NativeID: "id-a", Secret: "synthetic-native-bearer"})
+	time.Sleep(200 * time.Millisecond)
+	select {
+	case ok := <-call("settings", Request{Op: "list"}):
+		if !ok {
+			t.Fatal("settings request failed during native validation")
+		}
+	case <-time.After(time.Second):
+		t.Fatal("settings request waited for native validation")
+	}
+	select {
+	case ok := <-validated:
+		if ok {
+			t.Fatal("stalled native validation succeeded")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("stalled native validation did not time out")
+	}
+	if e.nativeAuthorization("a@example.com") == "ready" {
+		t.Fatal("timed-out validation left a usable bearer")
+	}
+	once.Do(func() { close(release) })
 }

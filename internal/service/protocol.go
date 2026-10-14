@@ -32,6 +32,19 @@ func (e *Engine) HandleJSON(b []byte, role string) []byte {
 	if json.Unmarshal(b, &r) != nil || !roleAllowed(role, r.Op) {
 		return response(nil, errors.New("unauthorized or invalid request"))
 	}
+	if r.Op == "account_native" {
+		// Validation calls Google and waits for the host SSO bearer. Holding the
+		// engine lock here stalled uploads and every settings request until it
+		// finished. The config store and native relay have their own locks.
+		e.mu.Lock()
+		fault := e.fault
+		e.mu.Unlock()
+		if fault {
+			return response(nil, errors.New("storage error; restart after checking free space"))
+		}
+		data, err := e.accountNative(r)
+		return response(data, err)
+	}
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	if e.fault {

@@ -172,25 +172,35 @@ NSDictionary *GSRequest(NSDictionary *request, NSError **error) {
             GSSampleApplication();
         });
     __block NSDictionary *result = nil;
-    dispatch_sync(GSCoreQueue, ^{
-        if (!GSReady)
-            return;
-        NSString *op = request[@"op"];
-        if ([op isEqual:@"conditions"])
-            return;
-        GSConditions();
-        BOOL native = [op isEqual:@"account_native"];
-        if (native)
+    NSString *op = request[@"op"];
+    if ([op isEqual:@"account_native"]) {
+        // Validation waits on Google and the SSO bearer (up to its own timeouts).
+        // Run it beside the serial core queue so settings polls and imports are
+        // not queued behind it; the Go engine does not hold its lock for this op.
+        __block BOOL ready = NO;
+        dispatch_sync(GSCoreQueue, ^{
+            ready = GSReady;
+            if (ready)
+                GSConditions();
+        });
+        if (ready) {
             GSRecord(@{@"authorization" : @"checking"});
-        result =
-            GSCall(request, [@[ @"begin", @"append", @"seal", @"account_native" ] containsObject:op]
-                                ? "googlephotos"
-                                : "settings");
-        if (result && [op isEqual:@"upload_summary"])
-            GSRecord(@{@"uploadSummary" : result});
-        if (native)
+            result = GSCall(request, "googlephotos");
             GSRecord(@{@"authorization" : result ? @"validated" : @"failed"});
-    });
+        }
+    } else
+        dispatch_sync(GSCoreQueue, ^{
+            if (!GSReady)
+                return;
+            if ([op isEqual:@"conditions"])
+                return;
+            GSConditions();
+            result = GSCall(request, [@[ @"begin", @"append", @"seal" ] containsObject:op]
+                                         ? "googlephotos"
+                                         : "settings");
+            if (result && [op isEqual:@"upload_summary"])
+                GSRecord(@{@"uploadSummary" : result});
+        });
     if (!result && error)
         *error = [NSError
             errorWithDomain:@"Gunshot"
